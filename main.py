@@ -122,10 +122,11 @@ def analyze_recording(results_base, num_per_plate, detector, frames, discobox_ru
         stage.reset()
 
        
-def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, num_recordings=1, count=1, time_between_rec=5):
+def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, num_recordings=2, count=2, time_between_rec=1):
     detector = Detector()
     frames = get_frames(folder_path, discobox_run, reanalyze)
 
+  
     Ground_truth = "" # alive or dead
    
 
@@ -147,4 +148,4 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
     # plot variablitiy distribution collected so far
     # Load the CSV file
 
-predict("Datasets/time_test/", "test", num_per_plate=2, reanalyze=False)
+predict("Datasets/long_run_test_final/", "test", num_per_plate=1, reanalyze=False)

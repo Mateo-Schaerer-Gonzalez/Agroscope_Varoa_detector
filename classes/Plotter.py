@@ -18,7 +18,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 class Plotter:
-    def __init__(self, stage, output_folder, discobox_run, time_between_recordings=0):
+    def __init__(self, stage, output_folder, discobox_run, time_between_recordings=1):
 
         self.stage = stage
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,7 +37,7 @@ class Plotter:
       
 
         # Read the time value
-        if time_between_recordings != 0:
+        if time_between_recordings != 1:
             self.time_between_recording = time_between_recordings / 60
             # write it to file
             with open(time_file_path, "w") as f:
@@ -50,7 +50,7 @@ class Plotter:
                     content = f.read().strip()
                     self.time_between_recording = float(content)
             except FileNotFoundError:
-                print("file not found setting")
+                print("file not found, setting time to 1 minute")
                 self.time_between_recording = 1
 
         
@@ -271,13 +271,13 @@ class Plotter:
                 ax.axhspan(threshold, y_max, color='green', alpha=0.2)
 
                 # Plot data
-                ax.plot(mite_df['recording'], mite_df['max diff'], marker='o', label='Max Diff')
-                ax.plot(mite_df['recording'], mite_df['local diff'], marker='x', label='Local Diff')
+                ax.plot(mite_df['recording'] * self.time_between_recording, mite_df['max diff'], marker='o', label='Max Diff')
+                ax.plot(mite_df['recording'] * self.time_between_recording, mite_df['local diff'], marker='x', label='Local Diff')
 
-              
 
                 ax.set_title(f"Mite: {mite_id}")
                 ax.set_ylabel("Diff")
+                ax.set_xlabel("time [min]")
                 ax.set_ylim(y_min, y_max)
                 ax.grid(True)
                 ax.legend()
@@ -287,6 +287,7 @@ class Plotter:
             for j in range(len(mites), len(axes)):
                 fig.delaxes(axes[j])
 
+       
             axes[-1].set_xlabel("Recording")
             plt.tight_layout(rect=[0, 0.03, 1, 0.95])
             plt.savefig(path)
@@ -326,6 +327,13 @@ class Plotter:
                     img = XLImage(path)
                     img.anchor = 'H1'
                     ws.add_image(img)
+
+                    path_detection = os.path.join(os.path.dirname(self.excel_by_recording), f'recording{rec}', 'frame_0.jpg')
+                    img_detection = XLImage(path_detection)
+                    img_detection.width = img_detection.width * 0.3
+                    img_detection.height = img_detection.height * 0.3
+                    img_detection.anchor = 'H31'
+                    ws.add_image(img_detection)
 
                 except Exception as e:
                     print("adding image failed")
@@ -388,12 +396,55 @@ class Plotter:
                 else:
                     print(f"Warning: Image for zone '{zone}' not found at {img_path}")
 
+                # Add label "first recording detections" in column V (22) at row idx+2
+                ws.merge_cells('S1:U1')
+
+                ws['S1'] = "first recording detections"
+                ws['S1'].font = ws['S1'].font.copy(bold=True)
+                ws['S1'].alignment = ws['S1'].alignment.copy(horizontal='center')
+
+
+                # add the zone image to the excel summary:
+                idx = 0
+                for zone_obj in self.stage.zones:
+                    #print("adding zone image to excel")
+                    print("zone_obj:", zone_obj.text_zones)
+                    print("label:", zone)
+                    if any(z.text == zone for z in zone_obj.text_zones):
+                        try:
+                            frame0 = cv2.imread(self.frame_path)
+                            idx += 1
+                        except FileNotFoundError:
+                            print(f"Frame 0 image not found at {self.frame_path} make sure to run save_frame0_detection first")
+                            continue
+
+                        img = zone_obj.get_ROI(frame0)
+
+                        #rescale the image to 50% of original size
+                        img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
+                        anchor = 1 + idx*5
+
+                        roi_img_path = os.path.join(self.by_mite_path, "zones", f"{zone}_roi{anchor}.jpg")
+                        cv2.imwrite(roi_img_path, img)
+
+                        roi_excel_img = XLImage(roi_img_path)
+                        
+                        # Calculate dynamic anchor like H20, H40, H60, etc.
+                        roi_excel_img.anchor = f"s{anchor}"
+                        
+                        ws.add_image(roi_excel_img)
+
+
+
+            img_path = os.path.join(self.by_mite_path, "zones", f"{zone}.png")
+            if os.path.exists(img_path):
+                img = XLImage(img_path)
+                img.width = img.width * 0.5
+                img.height = img.height * 0.5
+
             
             wb.save(self.excel_by_zones)
             print(f"Excel summary with zone-wise sheets saved to {self.excel_by_zones}")
         except ValueError:
-            print("inproper restart caused dataset to contain duplicates")
             self.stage.reset()
-            
-
-
+            raise ValueError("inproper restart caused dataset to contain duplicates")

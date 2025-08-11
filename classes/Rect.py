@@ -1,5 +1,7 @@
 import cv2
 
+from classes import mite
+
 class Rect:
     def __init__(self, x1, y1, x2, y2, color=(0, 255, 0)):
         # Ensure coordinates are in correct order (x1,y1) top-left, (x2,y2) bottom-right
@@ -27,16 +29,15 @@ class Rect:
 
     def get_ROI(self, frames):
         """
-        Extract ROI from all frames and append to self.roi_series.
-        
-        Parameters:
-            frames (np.ndarray): A 4D tensor of shape (num_frames, H, W, C)
+        Extract ROI from frames.
+        Supports single image (H, W, C) or batch (N, H, W, C).
         """
-        # Bounding box coordinates
-        roi = frames[:, self.y1:self.y2, self.x1:self.x2, :]  # Slice all frames with the bbox
-
-        return roi
-    
+        if frames.ndim == 3:  # Single frame
+            return frames[self.y1:self.y2, self.x1:self.x2, :]
+        elif frames.ndim == 4:  # Multiple frames
+            return frames[:, self.y1:self.y2, self.x1:self.x2, :]
+        else:
+            raise ValueError(f"Expected 3D or 4D array, got {frames.ndim}D")
 
 class TextZone(Rect):
     def __init__(self, x1, y1, x2, y2, text="EMPTY", parent_rect=None, color=(255, 0, 0)):
@@ -84,6 +85,8 @@ class MiteZone(Rect):
             self.mites.append(mite)
             mite.assigned_rect = self
             #mite.bbox.color = self.color  # Assign mite to this big MiteRegion
+
+          
 
             return True
         return False

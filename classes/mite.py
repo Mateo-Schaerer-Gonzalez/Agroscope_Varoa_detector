@@ -40,12 +40,16 @@ class Mite:
 
   
     def to_dict(self, recording_count):
+        print("Mite created:", self.mite_id)
+        print("Zone ID:", self.assigned_rect.zone_id)
+        
         return {'mite ID': self.mite_id,
                 'zone ID': self.assigned_rect.zone_id,
                 'status': 'alive' if self.alive else 'dead',
                 'max diff': self.max_diff,
                 'local diff': self.local_avg_diff,
                 'recording': recording_count}
+        
         
 
     def update_ROI(self, frames):
