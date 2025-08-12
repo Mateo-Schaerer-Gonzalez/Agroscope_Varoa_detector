@@ -7,90 +7,162 @@ COUNTER_FILE = ".count"
 
 
 def get_frames(folder_path, discobox_run=True, reanalyze=True):
-    frames_by_folder = {}
-
+    """Load frames from folder(s) with improved error handling."""
+    # Guard clauses
+    if not folder_path:
+        raise ValueError("Folder path must be provided")
+    
     # Resolve full folder path
+    resolved_path = _resolve_folder_path(folder_path, discobox_run)
+    
+    if not os.path.exists(resolved_path):
+        raise FileNotFoundError(f"Folder does not exist: {resolved_path}")
+    
+    # Get subfolders to process
+    subfolders = _get_subfolders_to_process(resolved_path)
+    
+    # Load frames from each subfolder
+    frames_by_folder = {}
+    for subfolder in subfolders:
+        frames = _load_frames_from_folder(subfolder)
+        if frames:
+            frames_by_folder[subfolder] = np.stack(frames)
+    
+    if not frames_by_folder:
+        raise ValueError("No images found in folder or none could be loaded.")
+    
+    return _return_frames_based_on_mode(frames_by_folder, reanalyze)
+
+
+def _resolve_folder_path(folder_path, discobox_run):
+    """Resolve the absolute path for the folder."""
     if discobox_run:
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        folder_path = os.path.abspath(os.path.join(base_dir, "..", "..", folder_path))
+        return os.path.abspath(os.path.join(base_dir, "..", "..", folder_path))
     else:
-        folder_path = os.path.abspath(folder_path)
+        return os.path.abspath(folder_path)
 
-    # Check if folder_path contains subfolders
+
+def _get_subfolders_to_process(folder_path):
+    """Get list of subfolders to process."""
     subfolders = sorted([
         os.path.join(folder_path, d)
         for d in os.listdir(folder_path)
         if os.path.isdir(os.path.join(folder_path, d))
     ])
+    
+    # If no subfolders found, use the main folder
+    return subfolders if subfolders else [folder_path]
 
-    if not subfolders:
-        subfolders = [folder_path]
 
-    for subfolder in subfolders:
-        frames = []
-        for root, dirs, files in os.walk(subfolder, followlinks=True):
-            for fname in files:
-                if not fname.lower().endswith(".bmp"):
-                    continue
-                img_path = os.path.join(root, fname)
-                img = cv2.imread(img_path)
-                if img is None:
-                    print(f"Skipped (not image or unreadable): {img_path}")
-                    continue
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                frames.append(img)
-
-        if frames:
-            frames_by_folder[subfolder] = np.stack(frames)
+def _load_frames_from_folder(subfolder):
+    """Load all BMP frames from a specific folder."""
+    frames = []
+    
+    for root, dirs, files in os.walk(subfolder, followlinks=True):
+        for fname in files:
+            if not fname.lower().endswith(".bmp"):
+                continue
             
+            img_path = os.path.join(root, fname)
+            frame = _load_single_image(img_path)
+            
+            if frame is not None:
+                frames.append(frame)
+    
+    return frames
 
-    if not frames_by_folder:
-        raise ValueError("No images found in folder or none could be loaded.")
 
+def _load_single_image(img_path):
+    """Load and convert a single image."""
+    try:
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"Skipped (not image or unreadable): {img_path}")
+            return None
+        
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+    except Exception as e:
+        print(f"Error loading image {img_path}: {e}")
+        return None
+
+
+def _return_frames_based_on_mode(frames_by_folder, reanalyze):
+    """Return frames based on analysis mode."""
     if not reanalyze:
         # Only return the last folder's stack
         last_folder = sorted(frames_by_folder.keys())[-1]
         return frames_by_folder[last_folder]
-
-    # Else return all as list
+    
+    # Return all as list for reanalysis
     return list(frames_by_folder.values())
 
 
 
 
 def draw_rects_from_polygon_labels(image_path, label_path, output_path):
+    """Draw rectangles from polygon labels on an image."""
+    # Guard clauses
+    if not image_path or not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image not found: {image_path}")
+    
+    if not label_path or not os.path.exists(label_path):
+        raise FileNotFoundError(f"Label file not found: {label_path}")
+    
     image = cv2.imread(image_path)
     if image is None:
-        raise FileNotFoundError(f"Image not found: {image_path}")
+        raise ValueError(f"Could not load image: {image_path}")
+    
     h, w = image.shape[:2]
+    
+    try:
+        with open(label_path, 'r') as f:
+            lines = f.readlines()
+        
+        for line_num, line in enumerate(lines, 1):
+            try:
+                _draw_rect_from_line(image, line, w, h)
+            except Exception as e:
+                print(f"Warning: Error processing line {line_num}: {e}")
+                continue
+        
+        cv2.imwrite(output_path, image)
+        
+    except Exception as e:
+        raise RuntimeError(f"Failed to process labels: {e}")
 
-    def extract_rect_from_polygon_line(line, image_width, image_height):
-        parts = list(map(float, line.strip().split()))
-        class_id = int(parts[0])
-        coords = parts[1:]
 
-        if len(coords) != 8:
-            raise ValueError(f"Expected 8 coordinates, got {len(coords)}")
+def _draw_rect_from_line(image, line, image_width, image_height):
+    """Draw a rectangle from a single label line."""
+    class_id, (x1, y1, x2, y2) = _extract_rect_from_polygon_line(line, image_width, image_height)
+    
+    color = (0, 255, 0) if class_id == 0 else (0, 0, 255)
+    cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+    cv2.putText(image, f"Class {class_id}", (x1, max(y1 - 10, 0)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        x_coords = [coords[i] * image_width for i in range(0, 8, 2)]
-        y_coords = [coords[i] * image_height for i in range(1, 8, 2)]
 
-        x_min, x_max = int(min(x_coords)), int(max(x_coords))
-        y_min, y_max = int(min(y_coords)), int(max(y_coords))
-
-        return class_id, (x_min, y_min, x_max, y_max)
-
-    with open(label_path, 'r') as f:
-        lines = f.readlines()
-
-    for line in lines:
-        class_id, (x1, y1, x2, y2) = extract_rect_from_polygon_line(line, w, h)
-        color = (0, 255, 0) if class_id == 0 else (0, 0, 255)
-        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(image, f"Class {class_id}", (x1, max(y1 - 10, 0)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-    cv2.imwrite(output_path, image)
+def _extract_rect_from_polygon_line(line, image_width, image_height):
+    """Extract rectangle coordinates from a polygon line."""
+    parts = list(map(float, line.strip().split()))
+    
+    if len(parts) < 9:  # class_id + 8 coordinates
+        raise ValueError(f"Expected at least 9 parts, got {len(parts)}")
+    
+    class_id = int(parts[0])
+    coords = parts[1:9]  # Take first 8 coordinates
+    
+    if len(coords) != 8:
+        raise ValueError(f"Expected 8 coordinates, got {len(coords)}")
+    
+    x_coords = [coords[i] * image_width for i in range(0, 8, 2)]
+    y_coords = [coords[i] * image_height for i in range(1, 8, 2)]
+    
+    x_min, x_max = int(min(x_coords)), int(max(x_coords))
+    y_min, y_max = int(min(y_coords)), int(max(y_coords))
+    
+    return class_id, (x_min, y_min, x_max, y_max)
 
 
 def convert_yolo_to_coords(input_file, output_file, image_path):

@@ -3,8 +3,16 @@ import os
 #import torch
 
 class Detector:
+    """YOLO-based detector for Varroa mites."""
+    
     def __init__(self):
-        self.model_path = os.path.join(
+        self.model_path = self._get_model_path()
+        self.model = self._initialize_model()
+        self.result = None
+
+    def _get_model_path(self):
+        """Get the path to the trained model."""
+        return os.path.join(
             os.path.dirname(__file__),
             "..",
             "model_weights",
@@ -13,32 +21,56 @@ class Detector:
             "fine_tuned_varro_model9",
             "weights",
             "best.pt"
-        )  # Path to your fine-tuned model
-
-        
-        self.model = YOLO(self.model_path, verbose=False)
-        self.result = None
-
-    def run_detection(self, image):
-        # Run the model on a single image
-        result = self.model(
-            image,
-            imgsz=1024,  #fine tuned uses 512 / 6016
-            max_det=2000,
-            conf=0.1,
-            iou=0.5,
-            save=False,
-            show_labels=False,
-            line_width=2,
-            save_txt=False,
-            save_conf=False,
-            verbose=False,
-            batch=1,
-            exist_ok=True,
-            #device="cuda"   #uncomment if you have gpu
         )
 
-        self.result = result[0] # only for one image
+    def _initialize_model(self):
+        """Initialize the YOLO model."""
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
+        
+        return YOLO(self.model_path, verbose=False)
+
+    def run_detection(self, image):
+        """Run detection on a single image."""
+        # Guard clauses
+        if image is None:
+            raise ValueError("Image cannot be None")
+        
+        if not hasattr(self.model, 'predict') and not callable(getattr(self.model, '__call__', None)):
+            raise RuntimeError("Model is not properly initialized")
+
+        try:
+            result = self.model(
+                image,
+                imgsz=1024,  # fine tuned uses 512 / 6016
+                max_det=2000,
+                conf=0.1,
+                iou=0.5,
+                save=False,
+                show_labels=False,
+                line_width=2,
+                save_txt=False,
+                save_conf=False,
+                verbose=False,
+                batch=1,
+                exist_ok=True,
+                # device="cuda"   # uncomment if you have gpu
+            )
+            
+            if not result or len(result) == 0:
+                raise RuntimeError("Detection failed or returned no results")
+            
+            self.result = result[0]  # only for one image
+            
+        except Exception as e:
+            raise RuntimeError(f"Detection failed: {str(e)}")
+
+    def has_detections(self):
+        """Check if the last detection found any objects."""
+        if self.result is None:
+            return False
+        
+        return hasattr(self.result, 'boxes') and len(self.result.boxes) > 0
 
     
 
