@@ -133,8 +133,10 @@ def analyze_recording(results_base, num_per_plate, detector, frames, discobox_ru
         _generate_summary_reports(plotter, stage)
 
 
-def _determine_results_base(folder_path, discobox_run):
+def _determine_results_base(folder_path, discobox_run, output_folder=None):
     """Determine the base path for results."""
+    if output_folder:
+        return output_folder
     return folder_path if discobox_run else "outputs"
 
 
@@ -147,7 +149,7 @@ def _validate_predict_inputs(folder_path, name, num_per_plate):
         raise ValueError("Name must be provided")
 
 def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, 
-           num_recordings=2, count=2, time_between_rec=1):
+           num_recordings=2, count=2, time_between_rec=1, output_folder=None):
     """Main prediction function that orchestrates the analysis process."""
     # Guard clauses
     _validate_predict_inputs(folder_path, name, num_per_plate)
@@ -169,7 +171,7 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
         raise ValueError("No frames were loaded for analysis")
     
     ground_truth = ""  # alive or dead
-    results_base = _determine_results_base(folder_path, discobox_run)
+    results_base = _determine_results_base(folder_path, discobox_run, output_folder)
     
     if reanalyze:
         reanalyze_recording(results_base, num_per_plate, detector, frames, 
@@ -180,4 +182,8 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
 
     
 
-predict("Datasets/long_run_test_final/", "test", num_per_plate=1, reanalyze=True)
+if __name__ == "__main__":
+    # Example usage - this will only run when script is executed directly
+    # Uncomment the line below to run a test analysis
+    # predict("Datasets/long_run_test_final/", "test", num_per_plate=1, reanalyze=True)
+    print("Varroa Detector - Use the GUI application (launch_gui.py) for interactive analysis")

@@ -48,4 +48,6 @@ tzdata==2025.2
 ultralytics==8.3.167
 ultralytics-thop==2.0.14
 urllib3==2.5.0
+customtkinter==5.2.0
+pillow==11.3.0
 vmbpy==1.1.1
