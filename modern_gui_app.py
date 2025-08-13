@@ -14,6 +14,9 @@ import zipfile
 import shutil
 from datetime import datetime
 import tempfile
+import cv2
+import numpy as np
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 
 class SplashScreen:
     def __init__(self, duration=3000):
@@ -177,6 +180,11 @@ class ModernVarroaDetectorApp:
         self.time_between_recordings = tk.StringVar(value="1")
         self.analysis_running = False
         self.results_path = None
+        self.current_image = None
+        self.image_display_label = None
+        
+        # Track changes to plates_per_recording for zone overlay updates
+        self.plates_per_recording.trace('w', self.on_zone_selection_change)
         
         # Create UI elements
         self.setup_ui()
@@ -289,6 +297,9 @@ class ModernVarroaDetectorApp:
         
         # Configuration section
         self.create_configuration_section(scrollable_frame)
+        
+        # Image preview section
+        self.create_image_preview_section(scrollable_frame)
         
         # Progress section
         self.create_progress_section(scrollable_frame)
@@ -437,6 +448,7 @@ class ModernVarroaDetectorApp:
             if os.path.isdir(folder_path):
                 self.selected_folder.set(folder_path)
                 self.animate_drop_success()
+                self.load_and_display_first_image(folder_path)
             else:
                 messagebox.showwarning("Invalid Drop", "Please drop a folder, not a file.")
     
@@ -452,6 +464,160 @@ class ModernVarroaDetectorApp:
             self.drop_text.configure(text="Drag & drop folder here or click to browse", 
                                    fg=self.colors['text_muted'])
         ])
+    
+    def on_zone_selection_change(self, *args):
+        """Handle changes to zone selection - update image overlay"""
+        if self.selected_folder.get():
+            self.load_and_display_first_image(self.selected_folder.get())
+    
+    def load_and_display_first_image(self, folder_path):
+        """Load and display the first image from the dataset with zone overlay"""
+        try:
+            # Find first image in dataset
+            first_image_path = self.find_first_image(folder_path)
+            if not first_image_path:
+                self.update_image_display_error("No images found in dataset")
+                return
+            
+            # Load image
+            image = cv2.imread(first_image_path)
+            if image is None:
+                self.update_image_display_error("Could not load image")
+                return
+            
+            # Convert to RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Apply zone overlay
+            image_with_zones = self.apply_zone_overlay(image_rgb)
+            
+            # Convert to PIL and display
+            self.display_image(image_with_zones)
+            
+        except Exception as e:
+            self.update_image_display_error(f"Error loading image: {str(e)}")
+    
+    def find_first_image(self, folder_path):
+        """Find the first .bmp image in the dataset folder"""
+        try:
+            # Look for subfolders first
+            subfolders = sorted([
+                os.path.join(folder_path, d)
+                for d in os.listdir(folder_path)
+                if os.path.isdir(os.path.join(folder_path, d))
+            ])
+            
+            search_paths = subfolders if subfolders else [folder_path]
+            
+            for search_path in search_paths:
+                for root, dirs, files in os.walk(search_path):
+                    bmp_files = sorted([f for f in files if f.lower().endswith('.bmp')])
+                    if bmp_files:
+                        return os.path.join(root, bmp_files[0])
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error finding first image: {e}")
+            return None
+    
+    def apply_zone_overlay(self, image):
+        """Apply zone bounding boxes overlay to the image"""
+        try:
+            num_zones = int(self.plates_per_recording.get())
+            coordinates_file = f"Zoning/coordinates{num_zones}.txt"
+            
+            if not os.path.exists(coordinates_file):
+                return image
+            
+            # Convert to PIL for drawing
+            pil_image = Image.fromarray(image)
+            draw = ImageDraw.Draw(pil_image)
+            
+            # Read zone coordinates
+            with open(coordinates_file, 'r') as f:
+                lines = f.readlines()
+            
+            # Define colors for different zone types
+            colors = {
+                0: (255, 100, 100, 128),  # Red with transparency for class 0
+                1: (100, 255, 100, 128)   # Green with transparency for class 1
+            }
+            
+            # Draw each zone
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    class_id = int(parts[0])
+                    x1, y1, x2, y2 = map(float, parts[1:5])
+                    
+                    # Convert coordinates to integers
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    
+                    # Get color for this class
+                    color = colors.get(class_id, (100, 100, 255, 128))
+                    
+                    # Draw rectangle outline
+                    draw.rectangle([x1, y1, x2, y2], outline=color[:3], width=3)
+                    
+                    # Add zone label
+                    zone_text = f"Zone {class_id}"
+                    try:
+                        # Try to use a font, fallback to default if not available
+                        font = ImageFont.truetype("arial.ttf", 16)
+                    except:
+                        font = ImageFont.load_default()
+                    
+                    # Draw text background
+                    text_bbox = draw.textbbox((x1, y1-25), zone_text, font=font)
+                    draw.rectangle(text_bbox, fill=color[:3])
+                    draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
+            
+            return np.array(pil_image)
+            
+        except Exception as e:
+            print(f"Error applying zone overlay: {e}")
+            return image
+    
+    def display_image(self, image_array):
+        """Display the image in the GUI"""
+        try:
+            # Convert to PIL
+            pil_image = Image.fromarray(image_array)
+            
+            # Calculate display size (maintain aspect ratio, max 600x400)
+            max_width, max_height = 600, 400
+            img_width, img_height = pil_image.size
+            
+            # Calculate scaling factor
+            scale_w = max_width / img_width
+            scale_h = max_height / img_height
+            scale = min(scale_w, scale_h)
+            
+            # Resize image
+            new_width = int(img_width * scale)
+            new_height = int(img_height * scale)
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(pil_image)
+            
+            # Update display
+            self.image_display_label.configure(image=photo, text="")
+            self.image_display_label.image = photo  # Keep a reference
+            
+        except Exception as e:
+            self.update_image_display_error(f"Error displaying image: {str(e)}")
+    
+    def update_image_display_error(self, error_message):
+        """Update image display with error message"""
+        self.image_display_label.configure(
+            image='',
+            text=f"⚠️ {error_message}",
+            font=self.fonts['body'],
+            fg=self.colors['error']
+        )
+        self.image_display_label.image = None
     
     def create_configuration_section(self, parent):
         """Create modern configuration section"""
@@ -535,6 +701,53 @@ class ModernVarroaDetectorApp:
         
         # Configure grid weights
         config_frame.columnconfigure(1, weight=1)
+    
+    def create_image_preview_section(self, parent):
+        """Create image preview section with zone overlay"""
+        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
+        card_frame.pack(fill="x", pady=(0, 25), padx=15)
+        
+        # Header
+        header_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
+        header_frame.pack(fill="x", padx=20, pady=(20, 10))
+        
+        title_label = tk.Label(
+            header_frame,
+            text="🖼️ Image Preview with Zone Overlay",
+            font=self.fonts['heading'],
+            bg=self.colors['bg_secondary'],
+            fg=self.colors['text_primary']
+        )
+        title_label.pack(anchor="w")
+        
+        subtitle_label = tk.Label(
+            header_frame,
+            text="Preview of the first image with zone boundaries",
+            font=self.fonts['small'],
+            bg=self.colors['bg_secondary'],
+            fg=self.colors['text_secondary']
+        )
+        subtitle_label.pack(anchor="w", pady=(5, 0))
+        
+        # Image display frame
+        image_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
+        image_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        # Create a scrollable canvas for the image
+        canvas_frame = tk.Frame(image_frame, bg=self.colors['surface'], relief='flat', bd=1)
+        canvas_frame.pack(fill="both", expand=True, pady=10)
+        
+        # Image display label
+        self.image_display_label = tk.Label(
+            canvas_frame,
+            text="📂 Select a dataset folder to see the first image with zone overlay",
+            font=self.fonts['body'],
+            bg=self.colors['surface'],
+            fg=self.colors['text_muted'],
+            wraplength=600,
+            justify='center'
+        )
+        self.image_display_label.pack(expand=True, pady=50)
     
     def create_progress_section(self, parent):
         """Create modern progress section"""
@@ -707,6 +920,7 @@ class ModernVarroaDetectorApp:
         if folder_path:
             self.selected_folder.set(folder_path)
             self.animate_drop_success()
+            self.load_and_display_first_image(folder_path)
     
     def validate_inputs(self):
         """Validate user inputs"""
