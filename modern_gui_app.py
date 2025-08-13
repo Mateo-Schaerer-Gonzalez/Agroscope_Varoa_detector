@@ -15,11 +15,149 @@ import shutil
 from datetime import datetime
 import tempfile
 
+class SplashScreen:
+    def __init__(self, duration=3000):
+        self.duration = duration
+        self.splash = tk.Toplevel()
+        self.splash.title("")
+        self.splash.geometry("600x400")
+        self.splash.configure(bg='#2d7d32')
+        self.splash.overrideredirect(True)
+        
+        # Center splash screen
+        self.center_splash()
+        
+        # Create splash content
+        self.create_splash_content()
+        
+        # Auto close after duration
+        self.splash.after(self.duration, self.close_splash)
+        
+        # Make sure splash is on top
+        self.splash.lift()
+        self.splash.focus_force()
+        
+    def center_splash(self):
+        self.splash.update_idletasks()
+        x = (self.splash.winfo_screenwidth() // 2) - 300
+        y = (self.splash.winfo_screenheight() // 2) - 200
+        self.splash.geometry(f"600x400+{x}+{y}")
+        
+    def create_splash_content(self):
+        # Main container
+        main_frame = tk.Frame(self.splash, bg='#2d7d32')
+        main_frame.pack(expand=True, fill='both')
+        
+        # Title
+        title_label = tk.Label(
+            main_frame,
+            text="🐝 Varroa Detector",
+            font=('Segoe UI', 32, 'bold'),
+            fg='#ffc107',
+            bg='#2d7d32'
+        )
+        title_label.pack(pady=(60, 20))
+        
+        # Subtitle
+        subtitle_label = tk.Label(
+            main_frame,
+            text="Advanced AI-Powered Mite Detection",
+            font=('Segoe UI', 16),
+            fg='white',
+            bg='#2d7d32'
+        )
+        subtitle_label.pack(pady=(0, 40))
+        
+        # Bee emoji animation area
+        self.bee_label = tk.Label(
+            main_frame,
+            text="🐝",
+            font=('Segoe UI', 48),
+            fg='#ffc107',
+            bg='#2d7d32'
+        )
+        self.bee_label.pack(pady=20)
+        
+        # Loading text
+        loading_label = tk.Label(
+            main_frame,
+            text="Loading...",
+            font=('Segoe UI', 14),
+            fg='white',
+            bg='#2d7d32'
+        )
+        loading_label.pack(pady=(20, 0))
+        
+        # Progress bar
+        progress_frame = tk.Frame(main_frame, bg='#2d7d32')
+        progress_frame.pack(pady=20, padx=100, fill='x')
+        
+        self.progress_bar = tk.Canvas(
+            progress_frame, 
+            height=6, 
+            bg='#1b5e20', 
+            highlightthickness=0
+        )
+        self.progress_bar.pack(fill='x')
+        
+        # Start animations
+        self.animate_progress()
+        self.animate_bee()
+        
+    def animate_progress(self):
+        # Animated progress bar
+        def update_progress():
+            for i in range(101):
+                if hasattr(self, 'progress_bar'):
+                    self.progress_bar.delete("all")
+                    width = self.progress_bar.winfo_width()
+                    progress_width = (width * i) / 100
+                    self.progress_bar.create_rectangle(
+                        0, 0, progress_width, 6,
+                        fill='#ffc107', outline=''
+                    )
+                    self.splash.update()
+                    time.sleep(0.02)
+                else:
+                    break
+        
+        # Run in thread to avoid blocking
+        threading.Thread(target=update_progress, daemon=True).start()
+        
+    def animate_bee(self):
+        # Simple bee animation
+        bees = ["🐝", "🐛", "🐝", "🐛"]
+        self.bee_index = 0
+        
+        def update_bee():
+            if hasattr(self, 'bee_label'):
+                self.bee_label.configure(text=bees[self.bee_index])
+                self.bee_index = (self.bee_index + 1) % len(bees)
+                self.splash.after(500, update_bee)
+        
+        update_bee()
+        
+    def close_splash(self):
+        if hasattr(self, 'splash'):
+            self.splash.destroy()
+
 
 class ModernVarroaDetectorApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Varroa Detector - AI-Powered Mite Analysis")
+        
+        # Hide main window initially
+        self.root.withdraw()
+        
+        # Show splash screen
+        self.splash = SplashScreen(duration=3000)
+        
+        # Initialize main window after splash
+        self.root.after(3200, self.initialize_main_window)
+        
+    def initialize_main_window(self):
+        """Initialize the main application window after splash screen"""
+        self.root.title("🐝 Varroa Detector - AI-Powered Mite Analysis")
         self.root.geometry("1000x800")
         self.root.minsize(900, 700)
         
@@ -40,27 +178,29 @@ class ModernVarroaDetectorApp:
         # Center the window
         self.center_window()
         
-        # Setup drag and drop
-        self.setup_drag_drop()
+        # Show main window
+        self.root.deiconify()
     
     def setup_modern_styles(self):
-        """Configure modern visual styling"""
-        # Modern color scheme
+        """Configure modern light green visual styling"""
+        # Modern light color scheme with green accents
         self.colors = {
-            'bg_primary': '#1e1e2e',      # Dark background
-            'bg_secondary': '#313244',     # Secondary dark
-            'bg_tertiary': '#45475a',      # Tertiary dark
-            'accent': '#89b4fa',           # Blue accent
-            'accent_hover': '#74c7ec',     # Light blue
-            'success': '#a6e3a1',          # Green
-            'warning': '#fab387',          # Orange
-            'error': '#f38ba8',            # Red
-            'text_primary': '#cdd6f4',     # Light text
-            'text_secondary': '#a6adc8',   # Secondary text
-            'text_muted': '#6c7086',       # Muted text
-            'surface': '#383a59',          # Surface color
-            'gradient_start': '#89b4fa',
-            'gradient_end': '#cba6f7'
+            'bg_primary': '#ffffff',       # White background
+            'bg_secondary': '#f8fdf8',     # Very light green tint
+            'bg_tertiary': '#e8f5e8',      # Light green background
+            'accent': '#2d7d32',           # Deep green accent
+            'accent_hover': '#388e3c',     # Lighter green hover
+            'success': '#4caf50',          # Success green
+            'warning': '#ff9800',          # Orange
+            'error': '#f44336',            # Red
+            'text_primary': '#1b5e20',     # Dark green text
+            'text_secondary': '#2e7d32',   # Medium green text
+            'text_muted': '#6a7c59',       # Muted green text
+            'surface': '#f1f8e9',          # Light green surface
+            'gradient_start': '#66bb6a',   # Green gradient start
+            'gradient_end': '#81c784',     # Green gradient end
+            'bee_yellow': '#ffc107',       # Bee yellow accent
+            'honeycomb': '#fff3c4'         # Honeycomb color
         }
         
         # Configure root
@@ -78,31 +218,33 @@ class ModernVarroaDetectorApp:
         # Configure ttk styles for modern look
         style = ttk.Style()
         
-        # Configure modern button style
+        # Configure modern button style with rounded appearance
         style.configure('Modern.TButton',
                        background=self.colors['accent'],
                        foreground='white',
                        borderwidth=0,
                        focuscolor='none',
-                       padding=(20, 10))
+                       relief='flat',
+                       padding=(25, 15))
         
         style.map('Modern.TButton',
                  background=[('active', self.colors['accent_hover']),
                            ('pressed', self.colors['accent'])])
         
-        # Configure modern frame style
+        # Configure modern frame style with softer appearance
         style.configure('Card.TFrame',
                        background=self.colors['bg_secondary'],
-                       borderwidth=1,
-                       relief='solid')
+                       borderwidth=0,
+                       relief='flat')
         
-        # Configure modern progressbar
+        # Configure modern progressbar with rounded look
         style.configure('Modern.Horizontal.TProgressbar',
                        background=self.colors['accent'],
                        troughcolor=self.colors['bg_tertiary'],
                        borderwidth=0,
                        lightcolor=self.colors['accent'],
-                       darkcolor=self.colors['accent'])
+                       darkcolor=self.colors['accent'],
+                       relief='flat')
     
     def center_window(self):
         """Center the window on the screen"""
@@ -158,8 +300,8 @@ class ModernVarroaDetectorApp:
     
     def create_title_section(self, parent):
         """Create modern title section with gradient effect"""
-        title_frame = tk.Frame(parent, bg=self.colors['bg_primary'], height=120)
-        title_frame.pack(fill="x", pady=(0, 40))
+        title_frame = tk.Frame(parent, bg=self.colors['bg_primary'], height=140)
+        title_frame.pack(fill="x", pady=(0, 30))
         title_frame.pack_propagate(False)
         
         # Main title with modern styling
@@ -170,7 +312,7 @@ class ModernVarroaDetectorApp:
             bg=self.colors['bg_primary'],
             fg=self.colors['gradient_end']
         )
-        title_label.pack(pady=(20, 5))
+        title_label.pack(pady=(15, 5))
         
         # Subtitle with better styling
         subtitle_label = tk.Label(
@@ -180,7 +322,7 @@ class ModernVarroaDetectorApp:
             bg=self.colors['bg_primary'],
             fg=self.colors['text_secondary']
         )
-        subtitle_label.pack(pady=(0, 10))
+        subtitle_label.pack(pady=(0, 8))
         
         # Status indicator
         self.status_label = tk.Label(
@@ -190,13 +332,13 @@ class ModernVarroaDetectorApp:
             bg=self.colors['bg_primary'],
             fg=self.colors['success']
         )
-        self.status_label.pack()
+        self.status_label.pack(pady=(0, 5))
     
     def create_drag_drop_section(self, parent):
         """Create modern drag and drop area"""
-        # Card container
-        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='solid', borderwidth=1)
-        card_frame.pack(fill="x", pady=(0, 20), padx=10)
+        # Card container with softer styling
+        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
+        card_frame.pack(fill="x", pady=(0, 25), padx=15)
         
         # Section header
         header_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
@@ -204,7 +346,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="📁 Dataset Input",
+            text="� Dataset Input",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -307,8 +449,8 @@ class ModernVarroaDetectorApp:
     
     def create_configuration_section(self, parent):
         """Create modern configuration section"""
-        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='solid', borderwidth=1)
-        card_frame.pack(fill="x", pady=(0, 20), padx=10)
+        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
+        card_frame.pack(fill="x", pady=(0, 25), padx=15)
         
         # Header
         header_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
@@ -316,7 +458,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="⚙️ Analysis Configuration",
+            text="🍯 Analysis Configuration",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -366,12 +508,12 @@ class ModernVarroaDetectorApp:
                     font=self.fonts['body'],
                     bg=self.colors['surface'],
                     fg=self.colors['text_primary'],
-                    relief='solid',
-                    borderwidth=1,
+                    relief='flat',
+                    borderwidth=0,
                     width=30,
                     insertbackground=self.colors['text_primary']
                 )
-                widget.grid(row=i, column=1, sticky="ew", pady=8, ipady=6)
+                widget.grid(row=i, column=1, sticky="ew", pady=10, padx=(15, 0), ipady=10)
             
             elif widget_type == "combo":
                 values = config[3]
@@ -390,8 +532,8 @@ class ModernVarroaDetectorApp:
     
     def create_progress_section(self, parent):
         """Create modern progress section"""
-        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='solid', borderwidth=1)
-        card_frame.pack(fill="x", pady=(0, 20), padx=10)
+        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
+        card_frame.pack(fill="x", pady=(0, 25), padx=15)
         
         # Header
         header_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
@@ -399,7 +541,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="📊 Analysis Progress",
+            text="� Analysis Progress",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -442,9 +584,9 @@ class ModernVarroaDetectorApp:
     def create_action_buttons_section(self, parent):
         """Create modern action buttons"""
         button_frame = tk.Frame(parent, bg=self.colors['bg_primary'])
-        button_frame.pack(fill="x", pady=(0, 20), padx=10)
+        button_frame.pack(fill="x", pady=(10, 30), padx=20)
         
-        # Start button
+        # Start button with more rounded appearance
         self.start_button = tk.Button(
             button_frame,
             text="🚀 Start Analysis",
@@ -452,14 +594,15 @@ class ModernVarroaDetectorApp:
             bg=self.colors['success'],
             fg='white',
             relief='flat',
-            padx=40,
-            pady=15,
+            padx=45,
+            pady=18,
             command=self.start_analysis,
-            cursor='hand2'
+            cursor='hand2',
+            bd=0
         )
-        self.start_button.pack(side="left", expand=True, fill="x", padx=(0, 10))
+        self.start_button.pack(side="left", expand=True, fill="x", padx=(0, 15))
         
-        # Stop button
+        # Stop button with softer styling
         self.stop_button = tk.Button(
             button_frame,
             text="⏹️ Stop",
@@ -467,13 +610,14 @@ class ModernVarroaDetectorApp:
             bg=self.colors['error'],
             fg='white',
             relief='flat',
-            padx=40,
-            pady=15,
+            padx=45,
+            pady=18,
             command=self.stop_analysis,
             state="disabled",
-            cursor='hand2'
+            cursor='hand2',
+            bd=0
         )
-        self.stop_button.pack(side="right", padx=(10, 0))
+        self.stop_button.pack(side="right", padx=(15, 0))
         
         # Button hover effects
         self.add_hover_effect(self.start_button, self.colors['success'], '#8cc85d')
@@ -494,8 +638,8 @@ class ModernVarroaDetectorApp:
     
     def create_results_section(self, parent):
         """Create modern results section"""
-        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='solid', borderwidth=1)
-        card_frame.pack(fill="x", pady=(0, 20), padx=10)
+        card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
+        card_frame.pack(fill="x", pady=(0, 25), padx=15)
         
         # Header
         header_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
@@ -503,7 +647,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="📦 Results",
+            text="🍯 Results & Download",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -531,7 +675,7 @@ class ModernVarroaDetectorApp:
         # Download ZIP button (centered)
         self.download_button = tk.Button(
             buttons_frame,
-            text="📥 Download ZIP",
+            text="� Download Results",
             font=self.fonts['body'],
             bg=self.colors['warning'],
             fg='white',
