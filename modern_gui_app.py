@@ -108,17 +108,20 @@ class SplashScreen:
         # Animated progress bar
         def update_progress():
             for i in range(101):
-                if hasattr(self, 'progress_bar'):
-                    self.progress_bar.delete("all")
-                    width = self.progress_bar.winfo_width()
-                    progress_width = (width * i) / 100
-                    self.progress_bar.create_rectangle(
-                        0, 0, progress_width, 6,
-                        fill='#ffc107', outline=''
-                    )
-                    self.splash.update()
-                    time.sleep(0.02)
-                else:
+                try:
+                    if hasattr(self, 'progress_bar') and self.progress_bar.winfo_exists():
+                        self.progress_bar.delete("all")
+                        width = self.progress_bar.winfo_width()
+                        progress_width = (width * i) / 100
+                        self.progress_bar.create_rectangle(
+                            0, 0, progress_width, 6,
+                            fill='#ffc107', outline=''
+                        )
+                        self.splash.update()
+                        time.sleep(0.02)
+                    else:
+                        break
+                except (AttributeError, tk.TclError):
                     break
         
         # Run in thread to avoid blocking
@@ -130,10 +133,13 @@ class SplashScreen:
         self.bee_index = 0
         
         def update_bee():
-            if hasattr(self, 'bee_label'):
-                self.bee_label.configure(text=bees[self.bee_index])
-                self.bee_index = (self.bee_index + 1) % len(bees)
-                self.splash.after(500, update_bee)
+            try:
+                if hasattr(self, 'bee_label') and self.bee_label.winfo_exists():
+                    self.bee_label.configure(text=bees[self.bee_index])
+                    self.bee_index = (self.bee_index + 1) % len(bees)
+                    self.splash.after(500, update_bee)
+            except (AttributeError, tk.TclError):
+                pass
         
         update_bee()
         

@@ -1,0 +1,6 @@
+@echo off
+echo Activating myenv environment...
+call conda activate myenv
+echo Starting Varroa Detector GUI...
+python modern_gui_app.py
+pause
