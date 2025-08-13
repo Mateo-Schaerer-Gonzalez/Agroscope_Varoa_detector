@@ -709,9 +709,15 @@ class ModernVarroaDetectorApp:
             # Draw rectangle outline
             draw.rectangle([x1, y1, x2, y2], outline=outline_color, width=line_width)
             
-            # Add zone label
+            # Add zone label using actual zone_id from MiteManager
             mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
-            zone_text = f"Zone {zone_idx + 1}"
+            
+            # Use the zone_id from the MiteZone if available, otherwise use index
+            if hasattr(mite_zone, 'zone_id') and mite_zone.zone_id:
+                zone_text = str(mite_zone.zone_id)
+            else:
+                zone_text = f"Zone {zone_idx + 1}"
+                
             if self.zones_locked:
                 zone_text += " 🔒"
             zone_text += f" ({mite_count} mites)"
@@ -1195,14 +1201,23 @@ class ModernVarroaDetectorApp:
         self.image_canvas.configure(cursor="")
     
     def get_zone_at_point(self, x, y):
-        """Get the zone index at the given point coordinates"""
+        """Get the zone index at the given point coordinates using MiteManager zones"""
+        # Try to use MiteManager zones first (more accurate)
+        if hasattr(self, 'mite_manager') and self.mite_manager and hasattr(self.mite_manager, 'zones'):
+            for i, zone in enumerate(self.mite_manager.zones):
+                # Check if point is inside the zone using coordinate bounds
+                if zone.x1 <= x <= zone.x2 and zone.y1 <= y <= zone.y2:
+                    return i
+            return None
+        
+        # Fallback to zone_coordinates if MiteManager not available
         for i, (zone_class, x1, y1, x2, y2) in enumerate(self.zone_coordinates):
             if x1 <= x <= x2 and y1 <= y <= y2:
                 return i
         return None
     
     def update_hover_info(self, zone_index):
-        """Update the hover information panel with simplified display"""
+        """Update the hover information panel using MiteManager data"""
         if zone_index is None:
             self.hover_zone_info.configure(
                 text="Hover over a zone to see details",
@@ -1210,39 +1225,52 @@ class ModernVarroaDetectorApp:
             )
             return
             
-        if zone_index < len(self.zone_coordinates):
-            # Initialize variables
-            zone_label = f"Zone {zone_index + 1}"  # Default zone label
-            mite_count = 0
-            
-            # Get zone label and mite count from MiteManager if available
-            if self.mite_manager and hasattr(self.mite_manager, 'zones') and zone_index < len(self.mite_manager.zones):
-                # Use actual MiteManager data
-                mite_zone = self.mite_manager.zones[zone_index]
-                mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
-                zone_label = getattr(mite_zone, 'zone_id', f"Zone {zone_index + 1}")
-            else:
-                # Fallback to mite_zones data
-                zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
-                mite_count = len(zone_mites)
+        # Use MiteManager data if available (prioritize this)
+        if hasattr(self, 'mite_manager') and self.mite_manager and hasattr(self.mite_manager, 'zones'):
+            if zone_index < len(self.mite_manager.zones):
+                zone = self.mite_manager.zones[zone_index]
                 
-                # Try to get zone label from first mite in the zone
-                if zone_mites:
-                    zone_label = zone_mites[0].get('zone_label', f"Zone {zone_index + 1}")
+                # Get zone ID and mite count
+                zone_id = getattr(zone, 'zone_id', f'Zone {zone_index + 1}')
+                mite_count = len(zone.mites) if hasattr(zone, 'mites') else 0
+                
+                # Display zone info
+                zone_info = f"{zone_id}\nMites: {mite_count}"
+                
+                # Add click hint if there are mites
+                if mite_count > 0:
+                    zone_info += "\n\nClick to verify text"
+                
+                self.hover_zone_info.configure(
+                    text=zone_info,
+                    fg=self.colors['text_primary']
+                )
+                
+                print(f"Debug: MiteManager zone {zone_index}: ID='{zone_id}', mites={mite_count}")
+                return
+        
+        # Fallback to zone_coordinates if MiteManager not available
+        if zone_index < len(self.zone_coordinates):
+            # Get zone info from mite_zones data
+            zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
+            mite_count = len(zone_mites)
+            zone_label = f"Zone {zone_index + 1}"
             
-            # Simple display: Zone ID and mite count only
+            # Try to get zone label from first mite in the zone
+            if zone_mites:
+                zone_label = zone_mites[0].get('zone_label', f"Zone {zone_index + 1}")
+            
             zone_info = f"{zone_label}\nMites: {mite_count}"
             
-            # Add click hint if analysis is complete and there are mites
-            if self.analysis_complete_flag and mite_count > 0:
-                zone_info += "\n\nClick to verify text"
-            elif mite_count > 0:  # Show hint even if analysis not complete (for testing)
+            if mite_count > 0:
                 zone_info += "\n\nClick to verify text"
             
             self.hover_zone_info.configure(
                 text=zone_info,
                 fg=self.colors['text_primary']
             )
+            
+            print(f"Debug: Fallback zone {zone_index}: label='{zone_label}', mites={mite_count}")
     
     def open_text_verification_dialog(self, zone_index):
         """Open the text verification dialog for the clicked zone"""
@@ -1644,6 +1672,9 @@ class ModernVarroaDetectorApp:
         # Lock zones immediately when analysis starts to prevent changes during analysis
         self.lock_zones()
         
+        # Start monitoring for MiteManager file during analysis
+        self.start_mite_manager_monitoring()
+        
         # Refresh image display to show locked zones
         if self.selected_folder.get():
             self.load_and_display_first_image(self.selected_folder.get())
@@ -1663,6 +1694,47 @@ class ModernVarroaDetectorApp:
             daemon=True
         )
         analysis_thread.start()
+    
+    def start_mite_manager_monitoring(self):
+        """Start monitoring for MiteManager file during analysis"""
+        self.mite_manager_loaded = False
+        self.check_for_mite_manager()
+    
+    def check_for_mite_manager(self):
+        """Periodically check for MiteManager file and load it when available"""
+        if not self.analysis_running or self.mite_manager_loaded:
+            return
+            
+        try:
+            mite_manager_path = os.path.join(os.path.dirname(__file__), "classes", "mite_manager.plk")
+            
+            if os.path.exists(mite_manager_path):
+                print(f"📁 Found MiteManager during analysis: {mite_manager_path}")
+                
+                # Load the MiteManager
+                import pickle
+                from classes.MiteManager import MiteManager
+                
+                with open(mite_manager_path, 'rb') as f:
+                    self.mite_manager = pickle.load(f)
+                
+                self.mite_manager_loaded = True
+                print(f"✅ Loaded MiteManager during analysis with {len(self.mite_manager.zones)} zones")
+                
+                # Update zone display if image is loaded
+                if hasattr(self, 'current_pil_image') and self.current_pil_image:
+                    # Refresh the image display with updated zone info
+                    if hasattr(self, 'selected_folder') and self.selected_folder.get():
+                        self.load_and_display_first_image(self.selected_folder.get())
+                
+                return
+                
+        except Exception as e:
+            print(f"Error loading MiteManager during analysis: {e}")
+        
+        # Check again in 2 seconds if analysis is still running
+        if self.analysis_running:
+            self.root.after(2000, self.check_for_mite_manager)
     
     def run_analysis(self, folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec):
         """Run the analysis in a separate thread"""
