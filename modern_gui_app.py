@@ -1319,8 +1319,8 @@ class ModernVarroaDetectorApp:
                         self.download_button.configure(state="disabled", bg=self.colors['bg_tertiary']),
                         self.results_info.configure(text="📁 Results downloaded and temporary files cleaned up", fg=self.colors['text_muted']),
                         messagebox.showinfo(
-                            "ZIP Created Successfully",
-                            f"✅ Analysis results have been saved to:\n{zip_path}\n\nFile size: {self.get_file_size(zip_path)}\n\n� Analysis folders will be cleaned up on next app startup."
+                            "Analysis Complete! 🎉",
+                            f"✅ Analysis results successfully saved to:\n{zip_path}\n\nFile size: {self.get_file_size(zip_path)}\n\n🧹 All temporary files have been automatically cleaned up.\n\n📊 Your analysis is ready to use!"
                         )
                     ])
                     
