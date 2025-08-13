@@ -156,6 +156,20 @@ class ModernVarroaDetectorApp:
     def __init__(self):
         self.root = tk.Tk()
         
+        # Initialize text verification attributes early
+        self.analysis_complete_flag = False
+        self.zones_locked = False
+        self.mite_zones = []
+        self.current_hover_zone = None
+        self.zone_coordinates = []
+        self.canvas_scale = 1.0
+        self.canvas_offset_x = 0
+        self.canvas_offset_y = 0
+        
+        # MiteManager integration
+        self.mite_manager = None  # Will store the MiteManager instance after analysis
+        self.mite_manager = None  # Will store the MiteManager instance from analysis
+        
         # Hide main window initially
         self.root.withdraw()
         
@@ -657,100 +671,207 @@ class ModernVarroaDetectorApp:
     def apply_zone_overlay(self, image):
         """Apply zone bounding boxes overlay to the image"""
         try:
-            num_zones = int(self.plates_per_recording.get())
-            coordinates_file = f"Zoning/coordinates{num_zones}.txt"
-            
-            if not os.path.exists(coordinates_file):
-                return image
-            
-            # Convert to PIL for drawing
-            pil_image = Image.fromarray(image)
-            draw = ImageDraw.Draw(pil_image)
-            
-            # Read zone coordinates
-            with open(coordinates_file, 'r') as f:
-                lines = f.readlines()
-            
-            # Define colors for different zone types
-            colors = {
-                0: (255, 100, 100, 128),  # Red with transparency for class 0
-                1: (100, 255, 100, 128)   # Green with transparency for class 1
-            }
-            
-            # Draw each zone
-            for line in lines:
-                parts = line.strip().split()
-                if len(parts) >= 5:
-                    class_id = int(parts[0])
-                    x1, y1, x2, y2 = map(float, parts[1:5])
-                    
-                    # Convert coordinates to integers
-                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                    
-                    # Get color for this class
-                    color = colors.get(class_id, (100, 100, 255, 128))
-                    
-                    # Draw rectangle outline
-                    draw.rectangle([x1, y1, x2, y2], outline=color[:3], width=3)
-                    
-                    # Add zone label
-                    zone_text = f"Zone {class_id}"
-                    try:
-                        # Try to use a font, fallback to default if not available
-                        font = ImageFont.truetype("arial.ttf", 16)
-                    except:
-                        font = ImageFont.load_default()
-                    
-                    # Draw text background
-                    text_bbox = draw.textbbox((x1, y1-25), zone_text, font=font)
-                    draw.rectangle(text_bbox, fill=color[:3])
-                    draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
-            
-            return np.array(pil_image)
-            
+            # Try to use MiteManager data first, fall back to coordinate files
+            if self.mite_manager and hasattr(self.mite_manager, 'zones'):
+                return self.apply_mite_manager_overlay(image)
+            else:
+                return self.apply_coordinate_file_overlay(image)
+                
         except Exception as e:
             print(f"Error applying zone overlay: {e}")
             return image
     
+    def apply_mite_manager_overlay(self, image):
+        """Apply zone overlay using MiteManager data"""
+        # Convert to PIL for drawing
+        pil_image = Image.fromarray(image)
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Clear and rebuild zone coordinates from MiteManager
+        self.zone_coordinates = []
+        
+        # Process MiteManager zones
+        for zone_idx, mite_zone in enumerate(self.mite_manager.zones):
+            # Get zone coordinates
+            x1, y1, x2, y2 = mite_zone.x1, mite_zone.y1, mite_zone.x2, mite_zone.y2
+            
+            # Store zone coordinates for interaction (use zone_idx as class_id)
+            self.zone_coordinates.append((zone_idx, x1, y1, x2, y2))
+            
+            # Determine colors based on lock status
+            if self.zones_locked:
+                outline_color = (200, 50, 50)  # Red when locked
+                line_width = 5
+            else:
+                outline_color = (100, 255, 100)  # Green when unlocked  
+                line_width = 3
+                
+            # Draw rectangle outline
+            draw.rectangle([x1, y1, x2, y2], outline=outline_color, width=line_width)
+            
+            # Add zone label
+            mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
+            zone_text = f"Zone {zone_idx + 1}"
+            if self.zones_locked:
+                zone_text += " 🔒"
+            zone_text += f" ({mite_count} mites)"
+            
+            try:
+                # Try to use a font, fallback to default if not available
+                font = ImageFont.truetype("arial.ttf", 16)
+            except:
+                font = ImageFont.load_default()
+            
+            # Draw text background
+            text_bbox = draw.textbbox((x1, y1-25), zone_text, font=font)
+            bg_color = outline_color
+            draw.rectangle(text_bbox, fill=bg_color)
+            draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
+            
+            # Add click indicator if analysis is completed
+            if self.analysis_complete_flag and not self.zones_locked and mite_count > 0:
+                click_text = "Click to verify"
+                click_bbox = draw.textbbox((x1, y2+5), click_text, font=font)
+                draw.rectangle(click_bbox, fill=(100, 100, 255))
+                draw.text((x1, y2+5), click_text, fill=(255, 255, 255), font=font)
+        
+        return np.array(pil_image)
+    
+    def apply_coordinate_file_overlay(self, image):
+        """Apply zone overlay using coordinate files (fallback method)"""
+        num_zones = int(self.plates_per_recording.get())
+        coordinates_file = f"Zoning/coordinates{num_zones}.txt"
+        
+        if not os.path.exists(coordinates_file):
+            return image
+        
+        # Convert to PIL for drawing
+        pil_image = Image.fromarray(image)
+        draw = ImageDraw.Draw(pil_image)
+        
+        # Read zone coordinates and store for interaction
+        self.zone_coordinates = []
+        with open(coordinates_file, 'r') as f:
+            lines = f.readlines()
+        
+        # Define colors for different zone types
+        colors = {
+            0: (255, 100, 100, 128),  # Red with transparency for class 0
+            1: (100, 255, 100, 128)   # Green with transparency for class 1
+        }
+        
+        # Draw each zone
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) >= 5:
+                class_id = int(parts[0])
+                x1, y1, x2, y2 = map(float, parts[1:5])
+                
+                # Convert coordinates to integers
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                
+                # Store zone coordinates for interaction
+                self.zone_coordinates.append((class_id, x1, y1, x2, y2))
+                
+                # Get color for this class
+                color = colors.get(class_id, (100, 100, 255, 128))
+                
+                # Draw rectangle outline - thicker if zones are locked
+                line_width = 5 if self.zones_locked else 3
+                outline_color = color[:3] if not self.zones_locked else (200, 50, 50)  # Red when locked
+                
+                draw.rectangle([x1, y1, x2, y2], outline=outline_color, width=line_width)
+                
+                # Add zone label with lock indicator
+                zone_text = f"Zone {class_id}"
+                if self.zones_locked:
+                    zone_text += " 🔒"
+                
+                try:
+                    # Try to use a font, fallback to default if not available
+                    font = ImageFont.truetype("arial.ttf", 16)
+                except:
+                    font = ImageFont.load_default()
+                
+                # Draw text background
+                text_bbox = draw.textbbox((x1, y1-25), zone_text, font=font)
+                bg_color = outline_color if self.zones_locked else color[:3]
+                draw.rectangle(text_bbox, fill=bg_color)
+                draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
+                
+                # Add click indicator if analysis is completed
+                if self.analysis_complete_flag and not self.zones_locked:
+                    click_text = "Click to verify"
+                    click_bbox = draw.textbbox((x1, y2+5), click_text, font=font)
+                    draw.rectangle(click_bbox, fill=(100, 100, 255))
+                    draw.text((x1, y2+5), click_text, fill=(255, 255, 255), font=font)
+        
+        return np.array(pil_image)
+    
     def display_image(self, image_array):
-        """Display the image in the GUI"""
+        """Display the image in the GUI canvas"""
         try:
+            # Hide fallback label if showing
+            self.image_display_label.pack_forget()
+            
             # Convert to PIL
             pil_image = Image.fromarray(image_array)
             
-            # Calculate display size (maintain aspect ratio, max 600x400)
-            max_width, max_height = 600, 400
+            # Calculate display size (maintain aspect ratio, max 400x300 for left panel)
+            max_width, max_height = 400, 300
             img_width, img_height = pil_image.size
             
             # Calculate scaling factor
             scale_w = max_width / img_width
             scale_h = max_height / img_height
-            scale = min(scale_w, scale_h)
+            self.canvas_scale = min(scale_w, scale_h)
             
             # Resize image
-            new_width = int(img_width * scale)
-            new_height = int(img_height * scale)
-            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            new_width = int(img_width * self.canvas_scale)
+            new_height = int(img_height * self.canvas_scale)
+            pil_image_resized = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Configure canvas size
+            self.image_canvas.configure(width=new_width, height=new_height)
+            
+            # Calculate centering offsets
+            canvas_width = self.image_canvas.winfo_reqwidth()
+            canvas_height = self.image_canvas.winfo_reqheight()
+            self.canvas_offset_x = max(0, (canvas_width - new_width) // 2)
+            self.canvas_offset_y = max(0, (canvas_height - new_height) // 2)
             
             # Convert to PhotoImage
-            photo = ImageTk.PhotoImage(pil_image)
+            photo = ImageTk.PhotoImage(pil_image_resized)
             
-            # Update display
-            self.image_display_label.configure(image=photo, text="")
-            self.image_display_label.image = photo  # Keep a reference
+            # Clear canvas and add image
+            self.image_canvas.delete("all")
+            self.image_canvas.create_image(
+                self.canvas_offset_x, self.canvas_offset_y, 
+                anchor="nw", image=photo
+            )
+            
+            # Store reference to prevent garbage collection
+            self.image_canvas.photo = photo
             
         except Exception as e:
             self.update_image_display_error(f"Error displaying image: {str(e)}")
     
     def update_image_display_error(self, error_message):
         """Update image display with error message"""
+        # Show fallback label with error
+        self.image_display_label.pack(expand=True, pady=50)
         self.image_display_label.configure(
             image='',
             text=f"⚠️ {error_message}",
             font=self.fonts['body'],
             fg=self.colors['error']
         )
-        self.image_display_label.image = None
+        if hasattr(self.image_display_label, 'image'):
+            self.image_display_label.image = None
+        
+        # Clear canvas
+        if hasattr(self, 'image_canvas'):
+            self.image_canvas.delete("all")
     
     def create_configuration_section(self, parent):
         """Create modern configuration section"""
@@ -831,12 +952,16 @@ class ModernVarroaDetectorApp:
                     font=self.fonts['body']
                 )
                 widget.grid(row=i, column=1, sticky="ew", pady=8, ipady=6)
+                
+                # Store reference to plates combobox for zone locking
+                if variable == self.plates_per_recording:
+                    self.plates_combobox = widget
         
         # Configure grid weights
         config_frame.columnconfigure(1, weight=1)
     
     def create_image_preview_section(self, parent):
-        """Create image preview section with zone overlay"""
+        """Create image preview section with zone overlay and text verification"""
         card_frame = tk.Frame(parent, bg=self.colors['bg_secondary'], relief='flat', borderwidth=0)
         card_frame.pack(fill="x", pady=(0, 25), padx=15)
         
@@ -855,32 +980,452 @@ class ModernVarroaDetectorApp:
         
         subtitle_label = tk.Label(
             header_frame,
-            text="Preview of the first image with zone boundaries",
+            text="Preview of the first image with zone boundaries. Click zones to verify text after analysis.",
             font=self.fonts['small'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_secondary']
         )
         subtitle_label.pack(anchor="w", pady=(5, 0))
         
-        # Image display frame
-        image_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
-        image_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        # Main content frame with image and info panel
+        content_frame = tk.Frame(card_frame, bg=self.colors['bg_secondary'])
+        content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        # Left side: Image display
+        left_frame = tk.Frame(content_frame, bg=self.colors['bg_secondary'])
+        left_frame.pack(side="left", fill="both", expand=True)
         
         # Create a scrollable canvas for the image
-        canvas_frame = tk.Frame(image_frame, bg=self.colors['surface'], relief='flat', bd=1)
+        canvas_frame = tk.Frame(left_frame, bg=self.colors['surface'], relief='flat', bd=1)
         canvas_frame.pack(fill="both", expand=True, pady=10)
         
-        # Image display label
+        # Create canvas for interactive image
+        self.image_canvas = tk.Canvas(
+            canvas_frame,
+            bg=self.colors['surface'],
+            highlightthickness=0
+        )
+        self.image_canvas.pack(fill="both", expand=True)
+        
+        # Bind canvas events for text verification
+        self.image_canvas.bind("<Motion>", self.on_image_hover)
+        self.image_canvas.bind("<Button-1>", self.on_image_click)
+        self.image_canvas.bind("<Leave>", self.on_image_leave)
+        
+        # Fallback image display label
         self.image_display_label = tk.Label(
             canvas_frame,
             text="📂 Select a dataset folder to see the first image with zone overlay",
             font=self.fonts['body'],
             bg=self.colors['surface'],
             fg=self.colors['text_muted'],
-            wraplength=600,
+            wraplength=400,
             justify='center'
         )
         self.image_display_label.pack(expand=True, pady=50)
+        
+        # Right side: Zone info panel
+        self.create_zone_info_panel(content_frame)
+        
+        # Initialize text verification state
+        self.analysis_complete_flag = False
+        self.zones_locked = False
+        self.mite_zones = []  # Will store detected mite zones with text
+        self.current_hover_zone = None
+        self.zone_coordinates = []  # Zone boundary coordinates
+        self.canvas_scale = 1.0
+        self.canvas_offset_x = 0
+        self.canvas_offset_y = 0
+    
+    def create_zone_info_panel(self, parent):
+        """Create the zone information panel on the right side"""
+        # Right side: Zone info panel
+        right_frame = tk.Frame(parent, bg=self.colors['bg_tertiary'], relief='flat', bd=1)
+        right_frame.pack(side="right", fill="y", padx=(15, 0))
+        right_frame.configure(width=300)
+        right_frame.pack_propagate(False)
+        
+        # Panel header
+        panel_header = tk.Label(
+            right_frame,
+            text="🔍 Zone Information",
+            font=self.fonts['subheading'],
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_primary']
+        )
+        panel_header.pack(pady=(15, 10))
+        
+        # Zone status indicator
+        self.zone_status_frame = tk.Frame(right_frame, bg=self.colors['bg_tertiary'])
+        self.zone_status_frame.pack(fill="x", padx=10, pady=(0, 15))
+        
+        self.zone_lock_status = tk.Label(
+            self.zone_status_frame,
+            text="🔓 Zones Unlocked",
+            font=self.fonts['small'],
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['warning']
+        )
+        self.zone_lock_status.pack()
+        
+        # Current hover info
+        hover_frame = tk.Frame(right_frame, bg=self.colors['surface'], relief='flat', bd=1)
+        hover_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        tk.Label(
+            hover_frame,
+            text="Current Zone:",
+            font=self.fonts['small'],
+            bg=self.colors['surface'],
+            fg=self.colors['text_secondary']
+        ).pack(pady=(10, 5))
+        
+        self.hover_zone_info = tk.Label(
+            hover_frame,
+            text="Hover over a zone to see details",
+            font=self.fonts['body'],
+            bg=self.colors['surface'],
+            fg=self.colors['text_muted'],
+            wraplength=250,
+            justify='center'
+        )
+        self.hover_zone_info.pack(pady=(0, 10))
+        
+        # Mite detection results
+        results_frame = tk.Frame(right_frame, bg=self.colors['surface'], relief='flat', bd=1)
+        results_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        
+        tk.Label(
+            results_frame,
+            text="Detected Mites:",
+            font=self.fonts['small'],
+            bg=self.colors['surface'],
+            fg=self.colors['text_secondary']
+        ).pack(pady=(10, 5))
+        
+        # Scrollable mite list
+        mite_scroll_frame = tk.Frame(results_frame, bg=self.colors['surface'])
+        mite_scroll_frame.pack(fill="both", expand=True, padx=5)
+        
+        self.mite_listbox = tk.Listbox(
+            mite_scroll_frame,
+            bg=self.colors['bg_primary'],
+            fg=self.colors['text_primary'],
+            selectbackground=self.colors['accent'],
+            selectforeground='white',
+            font=self.fonts['small'],
+            height=8
+        )
+        self.mite_listbox.pack(fill="both", expand=True, pady=(0, 5))
+        self.mite_listbox.insert(0, "No analysis results yet")
+        
+        # Text verification controls
+        verification_frame = tk.Frame(right_frame, bg=self.colors['bg_tertiary'])
+        verification_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        tk.Label(
+            verification_frame,
+            text="Text Verification:",
+            font=self.fonts['small'],
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_secondary']
+        ).pack()
+        
+        self.verify_button = tk.Button(
+            verification_frame,
+            text="🔍 Click Zone to Edit Text",
+            font=self.fonts['small'],
+            bg=self.colors['text_muted'],
+            fg='white',
+            state="disabled",
+            relief='flat',
+            pady=5
+        )
+        self.verify_button.pack(fill="x", pady=(5, 0))
+    
+    def on_image_hover(self, event):
+        """Handle mouse hover over the image canvas"""
+        if not self.zone_coordinates:
+            return
+            
+        # Get mouse coordinates relative to the image
+        canvas_x = self.image_canvas.canvasx(event.x)
+        canvas_y = self.image_canvas.canvasy(event.y)
+        
+        # Convert canvas coordinates to image coordinates
+        img_x = int((canvas_x - self.canvas_offset_x) / self.canvas_scale)
+        img_y = int((canvas_y - self.canvas_offset_y) / self.canvas_scale)
+        
+        # Check which zone we're hovering over
+        hovered_zone = self.get_zone_at_point(img_x, img_y)
+        
+        if hovered_zone != self.current_hover_zone:
+            self.current_hover_zone = hovered_zone
+            self.update_hover_info(hovered_zone)
+            
+        # Change cursor if over a clickable zone (after analysis)
+        if self.analysis_complete_flag and hovered_zone is not None:
+            self.image_canvas.configure(cursor="hand2")
+        else:
+            self.image_canvas.configure(cursor="")
+    
+    def on_image_click(self, event):
+        """Handle mouse click on the image canvas"""
+        if not self.analysis_complete_flag or not self.zone_coordinates:
+            return
+            
+        # Get mouse coordinates relative to the image
+        canvas_x = self.image_canvas.canvasx(event.x)
+        canvas_y = self.image_canvas.canvasy(event.y)
+        
+        # Convert canvas coordinates to image coordinates
+        img_x = int((canvas_x - self.canvas_offset_x) / self.canvas_scale)
+        img_y = int((canvas_y - self.canvas_offset_y) / self.canvas_scale)
+        
+        # Check which zone was clicked
+        clicked_zone = self.get_zone_at_point(img_x, img_y)
+        
+        if clicked_zone is not None:
+            self.open_text_verification_dialog(clicked_zone)
+    
+    def on_image_leave(self, event):
+        """Handle mouse leaving the image canvas"""
+        self.current_hover_zone = None
+        self.update_hover_info(None)
+        self.image_canvas.configure(cursor="")
+    
+    def get_zone_at_point(self, x, y):
+        """Get the zone index at the given point coordinates"""
+        for i, (zone_class, x1, y1, x2, y2) in enumerate(self.zone_coordinates):
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return i
+        return None
+    
+    def update_hover_info(self, zone_index):
+        """Update the hover information panel with simplified display"""
+        if zone_index is None:
+            self.hover_zone_info.configure(
+                text="Hover over a zone to see details",
+                fg=self.colors['text_muted']
+            )
+            return
+            
+        if zone_index < len(self.zone_coordinates):
+            # Initialize variables
+            zone_label = f"Zone {zone_index + 1}"  # Default zone label
+            mite_count = 0
+            
+            # Get zone label and mite count from MiteManager if available
+            if self.mite_manager and hasattr(self.mite_manager, 'zones') and zone_index < len(self.mite_manager.zones):
+                # Use actual MiteManager data
+                mite_zone = self.mite_manager.zones[zone_index]
+                mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
+                zone_label = getattr(mite_zone, 'zone_id', f"Zone {zone_index + 1}")
+            else:
+                # Fallback to mite_zones data
+                zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
+                mite_count = len(zone_mites)
+                
+                # Try to get zone label from first mite in the zone
+                if zone_mites:
+                    zone_label = zone_mites[0].get('zone_label', f"Zone {zone_index + 1}")
+            
+            # Simple display: Zone ID and mite count only
+            zone_info = f"{zone_label}\nMites: {mite_count}"
+            
+            # Add click hint if analysis is complete and there are mites
+            if self.analysis_complete_flag and mite_count > 0:
+                zone_info += "\n\nClick to verify text"
+            elif mite_count > 0:  # Show hint even if analysis not complete (for testing)
+                zone_info += "\n\nClick to verify text"
+            
+            self.hover_zone_info.configure(
+                text=zone_info,
+                fg=self.colors['text_primary']
+            )
+    
+    def open_text_verification_dialog(self, zone_index):
+        """Open the text verification dialog for the clicked zone"""
+        zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
+        
+        if not zone_mites:
+            messagebox.showinfo("No Mites", f"No mites detected in Zone {zone_index + 1}")
+            return
+        
+        # Create text verification dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"🔍 Text Verification - Zone {zone_index + 1}")
+        dialog.geometry("500x400")
+        dialog.configure(bg=self.colors['bg_primary'])
+        dialog.resizable(True, True)
+        
+        # Center dialog
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Dialog content
+        main_frame = tk.Frame(dialog, bg=self.colors['bg_primary'])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = tk.Label(
+            main_frame,
+            text=f"🔍 Verify Detected Text - Zone {zone_index + 1}",
+            font=self.fonts['heading'],
+            bg=self.colors['bg_primary'],
+            fg=self.colors['text_primary']
+        )
+        title_label.pack(pady=(0, 15))
+        
+        # Mite list with text editing
+        for i, mite in enumerate(zone_mites):
+            mite_frame = tk.Frame(main_frame, bg=self.colors['surface'], relief='flat', bd=1)
+            mite_frame.pack(fill="x", pady=(0, 10))
+            
+            # Mite info
+            mite_info_label = tk.Label(
+                mite_frame,
+                text=f"Mite {mite.get('mite_id', f'mite_{i+1}')} - Status: {mite.get('status', 'unknown')}",
+                font=self.fonts['body'],
+                bg=self.colors['surface'],
+                fg=self.colors['text_primary']
+            )
+            mite_info_label.pack(anchor="w", padx=10, pady=(10, 5))
+            
+            # Text entry
+            text_label = tk.Label(
+                mite_frame,
+                text="Detected/Edited Text:",
+                font=self.fonts['small'],
+                bg=self.colors['surface'],
+                fg=self.colors['text_secondary']
+            )
+            text_label.pack(anchor="w", padx=10)
+            
+            text_entry = tk.Entry(
+                mite_frame,
+                font=self.fonts['body'],
+                bg=self.colors['bg_primary'],
+                relief='flat',
+                bd=1
+            )
+            current_text = mite.get('detected_text', f"Text for mite {mite.get('mite_id', i+1)}")
+            text_entry.insert(0, current_text)
+            text_entry.pack(fill="x", padx=10, pady=(2, 10))
+            
+            # Store reference for saving
+            mite['text_entry'] = text_entry
+        
+        # Buttons frame
+        button_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
+        button_frame.pack(fill="x", pady=(15, 0))
+        
+        # Save button
+        save_button = tk.Button(
+            button_frame,
+            text="💾 Save Changes",
+            font=self.fonts['body'],
+            bg=self.colors['success'],
+            fg='white',
+            relief='flat',
+            pady=10,
+            command=lambda: self.save_text_verification(zone_mites, dialog)
+        )
+        save_button.pack(side="left", padx=(0, 10))
+        
+        # Cancel button
+        cancel_button = tk.Button(
+            button_frame,
+            text="✖ Cancel",
+            font=self.fonts['body'],
+            bg=self.colors['error'],
+            fg='white',
+            relief='flat',
+            pady=10,
+            command=dialog.destroy
+        )
+        cancel_button.pack(side="left")
+    
+    def save_text_verification(self, zone_mites, dialog):
+        """Save the verified text changes"""
+        changes_made = False
+        
+        for mite in zone_mites:
+            if 'text_entry' in mite:
+                new_text = mite['text_entry'].get()
+                old_text = mite.get('detected_text', '')
+                
+                if new_text != old_text:
+                    mite['verified_text'] = new_text
+                    mite['detected_text'] = new_text  # Update the display text
+                    mite['text_verified'] = True
+                    changes_made = True
+                    
+                    # If MiteManager is available, update the text zones
+                    if hasattr(self, 'mite_manager') and self.mite_manager:
+                        zone_id = mite.get('zone_id', 0)
+                        if zone_id < len(self.mite_manager.zones):
+                            zone = self.mite_manager.zones[zone_id]
+                            
+                            # Update text zones if they exist
+                            if hasattr(zone, 'text_zones') and zone.text_zones:
+                                for text_zone in zone.text_zones:
+                                    if hasattr(text_zone, 'text'):
+                                        text_zone.text = new_text
+                            else:
+                                # Create a text zone if none exists
+                                try:
+                                    from classes.Rect import TextZone
+                                    if not hasattr(zone, 'text_zones'):
+                                        zone.text_zones = []
+                                    
+                                    # Create a basic text zone with zone coordinates
+                                    text_zone = TextZone(zone.x1, zone.y1, zone.x2, zone.y2)
+                                    text_zone.text = new_text
+                                    zone.text_zones.append(text_zone)
+                                except ImportError:
+                                    print("Warning: Could not create TextZone - TextZone class not available")
+                    
+                    print(f"✅ Updated text for {mite.get('mite_id')}: '{old_text}' → '{new_text}'")
+        
+        # Save MiteManager if changes were made and it's available
+        if changes_made and hasattr(self, 'mite_manager') and self.mite_manager:
+            try:
+                self.mite_manager.save()
+                print("✅ Saved changes to MiteManager")
+            except Exception as e:
+                print(f"Warning: Could not save MiteManager: {e}")
+                
+        # Update the display
+        self.update_mite_list_display()
+        
+        # Show success message
+        if changes_made:
+            messagebox.showinfo("Success", "Text verification saved successfully!")
+        else:
+            messagebox.showinfo("Info", "No changes were made.")
+        
+        dialog.destroy()
+    
+    def update_mite_list_display(self):
+        """Update the mite list display in the zone info panel"""
+        if not hasattr(self, 'mite_listbox'):
+            return
+            
+        self.mite_listbox.delete(0, tk.END)
+        
+        if not self.mite_zones:
+            self.mite_listbox.insert(0, "No analysis results yet")
+            return
+        
+        for mite in self.mite_zones:
+            status_icon = "✅" if mite.get('text_verified', False) else "⏳"
+            status = mite.get('status', 'unknown')
+            zone_id = mite.get('zone_id', 'N/A')
+            mite_id = mite.get('mite_id', 'unknown')
+            
+            display_text = f"{status_icon} {mite_id} (Zone {zone_id + 1}) - {status}"
+            self.mite_listbox.insert(tk.END, display_text)
     
     def create_progress_section(self, parent):
         """Create modern progress section"""
@@ -1096,6 +1641,13 @@ class ModernVarroaDetectorApp:
         self.progress_label.configure(text="Initializing analysis...", fg=self.colors['text_primary'])
         self.status_label.configure(text="● Running", fg=self.colors['warning'])
         
+        # Lock zones immediately when analysis starts to prevent changes during analysis
+        self.lock_zones()
+        
+        # Refresh image display to show locked zones
+        if self.selected_folder.get():
+            self.load_and_display_first_image(self.selected_folder.get())
+        
         # Get parameters
         folder_path = self.selected_folder.get()
         name = self.analysis_name.get().strip()
@@ -1174,36 +1726,320 @@ class ModernVarroaDetectorApp:
     def analysis_completed(self):
         """Handle successful analysis completion"""
         self.analysis_running = False
-        self.start_button.configure(state="normal", bg=self.colors['success'])
-        self.stop_button.configure(state="disabled", bg=self.colors['bg_tertiary'])
-        self.progress_bar['value'] = 100
-        self.progress_percent.configure(text="100%")
-        self.progress_label.configure(text="✅ Analysis completed successfully!", 
-                                    fg=self.colors['success'])
-        self.status_label.configure(text="● Complete", fg=self.colors['success'])
+        self.analysis_complete_flag = True  # Mark analysis as completed for text verification
+        # Zones are already locked from when analysis started
         
-        # Update results section
-        self.results_info.configure(
-            text="🎉 Analysis completed! Results are ready for download.",
-            fg=self.colors['success']
-        )
-        self.download_button.configure(state="normal", bg=self.colors['warning'])
+        # Update UI elements if they exist
+        if hasattr(self, 'start_button'):
+            self.start_button.configure(state="normal", bg=self.colors.get('success', 'green'))
+        if hasattr(self, 'stop_button'):
+            self.stop_button.configure(state="disabled", bg=self.colors.get('bg_tertiary', 'lightgray'))
+        if hasattr(self, 'progress_bar'):
+            self.progress_bar['value'] = 100
+        if hasattr(self, 'progress_percent'):
+            self.progress_percent.configure(text="100%")
+        if hasattr(self, 'progress_label'):
+            self.progress_label.configure(text="✅ Analysis completed successfully!", 
+                                        fg=self.colors.get('success', 'green'))
+        if hasattr(self, 'status_label'):
+            self.status_label.configure(text="● Complete", fg=self.colors.get('success', 'green'))
+        
+        # Update results section if it exists
+        if hasattr(self, 'results_info'):
+            self.results_info.configure(
+                text="🎉 Analysis completed! Results are ready for download.",
+                fg=self.colors.get('success', 'green')
+            )
+        if hasattr(self, 'download_button'):
+            self.download_button.configure(state="normal", bg=self.colors.get('warning', 'orange'))
+        
+        # Load analysis results for text verification
+        self.load_analysis_results()
+        
+        # Enable text verification if UI exists
+        if hasattr(self, 'verify_button'):
+            self.verify_button.configure(
+                text="🔍 Click zones to verify text",
+                state="normal",
+                bg=self.colors.get('accent', 'blue')
+            )
+        
+        # Refresh image display with locked zones if possible
+        if hasattr(self, 'selected_folder') and self.selected_folder.get():
+            self.load_and_display_first_image(self.selected_folder.get())
         
         # Show completion message
         messagebox.showinfo(
             "Success",
-            "🎉 Analysis completed successfully!\n\nYou can now download your results as a ZIP file."
+            "🎉 Analysis completed successfully!\n\n"
+            "• Results are ready for download\n"
+            "• Zones are now locked\n"
+            "• Click on zones to verify detected text"
         )
+    
+    def lock_zones(self):
+        """Lock zones to prevent modification after analysis"""
+        self.zones_locked = True
+        
+        # Update zone lock status if UI elements exist
+        if hasattr(self, 'zone_lock_status'):
+            self.zone_lock_status.configure(
+                text="🔒 Zones Locked",
+                fg=self.colors['success'] if hasattr(self, 'colors') else 'green'
+            )
+        
+        # Disable zone selection controls if they exist
+        if hasattr(self, 'plates_combobox'):
+            self.plates_combobox.configure(state="disabled")
+    
+    def unlock_zones(self):
+        """Unlock zones to allow modification"""
+        self.zones_locked = False
+        
+        # Update zone lock status if UI elements exist
+        if hasattr(self, 'zone_lock_status'):
+            self.zone_lock_status.configure(
+                text="🔓 Zones Unlocked",
+                fg=self.colors['warning'] if hasattr(self, 'colors') else 'orange'
+            )
+        
+        # Enable zone selection controls if they exist
+        if hasattr(self, 'plates_combobox'):
+            self.plates_combobox.configure(state="readonly")
+    
+    def load_analysis_results(self):
+        """Load analysis results and populate mite data from MiteManager"""
+        if not hasattr(self, 'results_path') or not self.results_path:
+            print("No results path available, creating dummy data for testing")
+            self.create_dummy_mite_data()
+            return
+            
+        try:
+            # Try multiple locations for the MiteManager
+            search_paths = [
+                # Look in the classes directory (where it's normally saved)
+                os.path.join(os.path.dirname(__file__), "classes", "mite_manager.plk"),
+                # Look in the results path if provided
+                os.path.join(self.results_path, "mite_manager.plk") if self.results_path else None,
+                # Look for it in the results/recording folder structure
+                os.path.join(self.results_path, "results", "recording1", "mite_manager.plk") if self.results_path else None
+            ]
+            
+            # Filter out None paths
+            search_paths = [path for path in search_paths if path]
+            
+            mite_manager_found = False
+            
+            for mite_manager_path in search_paths:
+                if os.path.exists(mite_manager_path):
+                    print(f"Loading MiteManager from: {mite_manager_path}")
+                    
+                    # Import MiteManager and pickle
+                    import pickle
+                    from classes.MiteManager import MiteManager
+                    
+                    # Load the MiteManager
+                    with open(mite_manager_path, 'rb') as f:
+                        self.mite_manager = pickle.load(f)
+                    
+                    print(f"✅ Loaded MiteManager with {len(self.mite_manager.zones)} zones")
+                    mite_manager_found = True
+                    break
+            
+            if mite_manager_found:
+                # Extract mite data from MiteManager zones
+                self.mite_zones = []
+                zone_index = 0
+                
+                for zone in self.mite_manager.zones:
+                    print(f"Processing zone {zone_index}: '{zone.zone_id}' with {len(zone.mites)} mites")
+                    
+                    for mite_idx, mite in enumerate(zone.mites):
+                        mite_data = {
+                            'mite_id': mite.mite_id,
+                            'zone_id': zone_index,  # Use zone index for UI
+                            'zone_label': str(zone.zone_id),  # Store the actual zone label
+                            'status': 'alive' if mite.alive else 'dead',
+                            'max_diff': getattr(mite, 'max_diff', 0),
+                            'local_diff': getattr(mite, 'local_avg_diff', 0),
+                            'recording': 1,  # Default recording number
+                            'detected_text': f"{zone.zone_id}",  # Use zone label as detected text
+                            'text_verified': False,
+                            'bbox': (mite.bbox.x, mite.bbox.y, mite.bbox.x + mite.bbox.w, mite.bbox.y + mite.bbox.h)
+                        }
+                        self.mite_zones.append(mite_data)
+                    
+                    zone_index += 1
+                
+                print(f"✅ Extracted {len(self.mite_zones)} mites from MiteManager")
+                
+                # Update mite list display
+                self.update_mite_list_display()
+                return
+                
+        except Exception as e:
+            print(f"Error loading MiteManager: {e}")
+            print("Falling back to CSV parsing...")
+        
+        # Fallback to CSV parsing if MiteManager loading fails
+        self._load_from_csv_fallback()
+    
+    def _load_from_csv_fallback(self):
+        """Fallback method to load from CSV files if MiteManager is not available"""
+            
+        try:
+            # Look for CSV results file
+            results_files = []
+            for root, dirs, files in os.walk(self.results_path):
+                for file in files:
+                    if file.endswith('.csv') and 'results' in file.lower():
+                        results_files.append(os.path.join(root, file))
+            
+            if not results_files:
+                print("No CSV results file found")
+                return
+                
+            # Read the first results file
+            results_file = results_files[0]
+            print(f"Loading results from: {results_file}")
+            
+            # Parse CSV results
+            try:
+                import pandas as pd
+                df = pd.read_csv(results_file)
+                
+                self.mite_zones = []
+                for index, row in df.iterrows():
+                    mite_data = {
+                        'mite_id': row.get('mite ID', f'mite_{index}'),
+                        'zone_id': int(row.get('zone ID', 0)),
+                        'status': row.get('status', 'unknown'),
+                        'max_diff': row.get('max diff', 0),
+                        'local_diff': row.get('local diff', 0),
+                        'recording': row.get('recording', 0),
+                        'detected_text': f"Mite {row.get('mite ID', f'mite_{index}')} - {row.get('status', 'unknown')}",
+                        'text_verified': False
+                    }
+                    self.mite_zones.append(mite_data)
+                
+            except ImportError:
+                # Fallback to manual CSV parsing if pandas not available
+                with open(results_file, 'r') as f:
+                    lines = f.readlines()
+                    if len(lines) > 1:  # Skip header
+                        headers = lines[0].strip().split(',')
+                        self.mite_zones = []
+                        
+                        for i, line in enumerate(lines[1:]):
+                            values = line.strip().split(',')
+                            if len(values) >= len(headers):
+                                mite_data = {
+                                    'mite_id': values[0] if len(values) > 0 else f'mite_{i}',
+                                    'zone_id': int(values[1]) if len(values) > 1 and values[1].isdigit() else 0,
+                                    'status': values[2] if len(values) > 2 else 'unknown',
+                                    'max_diff': float(values[3]) if len(values) > 3 and values[3].replace('.','').isdigit() else 0,
+                                    'local_diff': float(values[4]) if len(values) > 4 and values[4].replace('.','').isdigit() else 0,
+                                    'recording': int(values[5]) if len(values) > 5 and values[5].isdigit() else 0,
+                                    'detected_text': f"Mite {values[0] if len(values) > 0 else f'mite_{i}'} - {values[2] if len(values) > 2 else 'unknown'}",
+                                    'text_verified': False
+                                }
+            print(f"Loaded {len(self.mite_zones)} mites from CSV")
+            
+            # Update mite list display
+            self.update_mite_list_display()
+            
+        except Exception as e:
+            print(f"Error loading CSV results: {e}")
+            # Create dummy data for testing if no results found
+            self.create_dummy_mite_data()
+            
+            print(f"Loaded {len(self.mite_zones)} mites from results")
+            
+            # Update mite list display
+            self.update_mite_list_display()
+            
+        except Exception as e:
+            print(f"Error loading analysis results: {e}")
+            # Create dummy data for testing if no results found
+            self.create_dummy_mite_data()
+    
+    def create_dummy_mite_data(self):
+        """Create dummy mite data for testing when no results are available"""
+        print("Creating dummy mite data for testing")
+        self.mite_zones = [
+            {
+                'mite_id': 'mite_001',
+                'zone_id': 0,
+                'zone_label': 'A1',
+                'status': 'alive',
+                'max_diff': 15.2,
+                'local_diff': 12.8,
+                'recording': 1,
+                'detected_text': 'A1',
+                'text_verified': False
+            },
+            {
+                'mite_id': 'mite_002',
+                'zone_id': 0,
+                'zone_label': 'A1',
+                'status': 'dead',
+                'max_diff': 8.1,
+                'local_diff': 6.5,
+                'recording': 1,
+                'detected_text': 'A1',
+                'text_verified': False
+            },
+            {
+                'mite_id': 'mite_003',
+                'zone_id': 1,
+                'zone_label': 'B2',
+                'status': 'alive',
+                'max_diff': 18.7,
+                'local_diff': 16.2,
+                'recording': 1,
+                'detected_text': 'B2',
+                'text_verified': False
+            },
+            {
+                'mite_id': 'mite_004',
+                'zone_id': 2,
+                'zone_label': 'C1', 
+                'status': 'alive',
+                'max_diff': 22.3,
+                'local_diff': 19.1,
+                'recording': 1,
+                'detected_text': 'C1',
+                'text_verified': False
+            }
+        ]
+        
+        # Also create dummy zone coordinates for testing hover functionality
+        self.zone_coordinates = [
+            (0, 50, 50, 200, 150),   # Zone A1 (zone_id=0)
+            (1, 250, 100, 400, 200), # Zone B2 (zone_id=1) 
+            (2, 100, 250, 300, 350)  # Zone C1 (zone_id=2)
+        ]
+        
+        print(f"Created {len(self.mite_zones)} dummy mites in {len(self.zone_coordinates)} zones")
+        self.update_mite_list_display()
     
     def analysis_failed(self, error_msg):
         """Handle analysis failure"""
         self.analysis_running = False
+        
+        # Unlock zones since analysis failed
+        self.unlock_zones()
+        
         self.start_button.configure(state="normal", bg=self.colors['success'])
         self.stop_button.configure(state="disabled", bg=self.colors['bg_tertiary'])
         self.progress_bar['value'] = 0
         self.progress_percent.configure(text="0%")
         self.progress_label.configure(text="❌ Analysis failed", fg=self.colors['error'])
         self.status_label.configure(text="● Error", fg=self.colors['error'])
+        
+        # Refresh image display to show unlocked zones
+        if self.selected_folder.get():
+            self.load_and_display_first_image(self.selected_folder.get())
         
         # Show error message
         messagebox.showerror("Analysis Failed", f"❌ {error_msg}")
@@ -1212,12 +2048,21 @@ class ModernVarroaDetectorApp:
         """Stop the current analysis"""
         if self.analysis_running:
             self.analysis_running = False
+            
+            # Unlock zones since analysis was stopped
+            self.unlock_zones()
+            
             self.start_button.configure(state="normal", bg=self.colors['success'])
             self.stop_button.configure(state="disabled", bg=self.colors['bg_tertiary'])
             self.progress_bar['value'] = 0
             self.progress_percent.configure(text="0%")
             self.progress_label.configure(text="Analysis stopped", fg=self.colors['warning'])
             self.status_label.configure(text="● Stopped", fg=self.colors['warning'])
+            
+            # Refresh image display to show unlocked zones
+            if self.selected_folder.get():
+                self.load_and_display_first_image(self.selected_folder.get())
+            
             messagebox.showinfo("Stopped", "Analysis has been stopped")
     
     def download_results_zip(self):

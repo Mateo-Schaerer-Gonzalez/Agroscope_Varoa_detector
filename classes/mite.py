@@ -24,9 +24,9 @@ class Mite:
      
     def __init__(self, yolo_bbox, frames):
         
-        
-        self.mite_id = f"mite_{Mite.id_counter:04d}"
         Mite.id_counter += 1
+        self.mite_id = f"mite_{Mite.id_counter:04d}"
+       
 
         self.bbox = TextZone(*yolo_bbox, text = str(Mite.id_counter))  # Create a Rect object for the bounding box
         self.center = ((yolo_bbox[0] + yolo_bbox[2]) // 2, (yolo_bbox[1] + yolo_bbox[3]) // 2)  # (x_center, y_center)
