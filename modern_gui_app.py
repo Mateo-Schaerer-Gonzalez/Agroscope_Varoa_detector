@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk, font
 import threading
 import os
 import sys
+import subprocess
 from pathlib import Path
 import time
 import zipfile
@@ -180,6 +181,7 @@ class ModernVarroaDetectorApp:
         self.time_between_recordings = tk.StringVar(value="1")
         self.analysis_running = False
         self.results_path = None
+        self.temp_results_dir = None  # Store temp directory path
         self.current_image = None
         self.image_display_label = None
         
@@ -269,6 +271,137 @@ class ModernVarroaDetectorApp:
         y = (self.root.winfo_screenheight() // 2) - (height // 2)
         self.root.geometry(f'{width}x{height}+{x}+{y}')
     
+    def cleanup_previous_results(self):
+        """Clean up any previous analysis results at startup when no files are in use"""
+        try:
+            outputs_dir = os.path.join(os.getcwd(), "outputs")
+            if not os.path.exists(outputs_dir):
+                return
+            
+            print("🧹 Cleaning up previous analysis results...")
+            
+            # More aggressive cleanup approach
+            import subprocess
+            import time
+            
+            # Remove all reanalysis directories
+            for item in os.listdir(outputs_dir):
+                if item.startswith("reanalysis"):
+                    reanalysis_path = os.path.join(outputs_dir, item)
+                    if os.path.isdir(reanalysis_path):
+                        try:
+                            # Try multiple approaches for stubborn folders
+                            success = self.force_remove_directory(reanalysis_path)
+                            if success:
+                                print(f"✅ Removed: {item}")
+                            else:
+                                print(f"⚠️  Could not remove {item} - will try alternative approach")
+                                # Alternative: try to remove individual files first
+                                self.remove_files_recursively(reanalysis_path)
+                        except Exception as e:
+                            print(f"⚠️  Could not remove {item}: {e}")
+            
+            # Also clean up the results folder if it exists
+            results_path = os.path.join(outputs_dir, "results")
+            if os.path.exists(results_path):
+                try:
+                    success = self.force_remove_directory(results_path)
+                    if success:
+                        print("✅ Removed: results folder")
+                    else:
+                        print("⚠️  Could not remove results folder - trying alternative approach")
+                        self.remove_files_recursively(results_path)
+                except Exception as e:
+                    print(f"⚠️  Could not remove results folder: {e}")
+            
+            print("🎉 Startup cleanup completed!")
+            
+        except Exception as e:
+            print(f"⚠️  Error during startup cleanup: {e}")
+    
+    def force_remove_directory(self, directory_path):
+        """Force remove a directory using multiple methods"""
+        import time
+        import subprocess
+        
+        # Method 1: Try normal removal first
+        try:
+            # Set all files as writable
+            for root, dirs, files in os.walk(directory_path):
+                for d in dirs:
+                    try:
+                        os.chmod(os.path.join(root, d), 0o777)
+                    except:
+                        pass
+                for f in files:
+                    try:
+                        os.chmod(os.path.join(root, f), 0o777)
+                    except:
+                        pass
+            
+            shutil.rmtree(directory_path)
+            return True
+        except:
+            pass
+        
+        # Method 2: Try Windows rmdir command
+        try:
+            subprocess.run(['rmdir', '/S', '/Q', directory_path], 
+                          shell=True, check=False, 
+                          capture_output=True, timeout=10)
+            if not os.path.exists(directory_path):
+                return True
+        except:
+            pass
+        
+        # Method 3: Try PowerShell Remove-Item
+        try:
+            cmd = f'Remove-Item -Path "{directory_path}" -Recurse -Force -ErrorAction SilentlyContinue'
+            subprocess.run(['powershell', '-Command', cmd], 
+                          check=False, capture_output=True, timeout=10)
+            if not os.path.exists(directory_path):
+                return True
+        except:
+            pass
+        
+        return False
+    
+    def remove_files_recursively(self, directory_path):
+        """Try to remove individual files when directory removal fails"""
+        try:
+            for root, dirs, files in os.walk(directory_path, topdown=False):
+                # Remove files first
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        os.chmod(file_path, 0o777)
+                        os.remove(file_path)
+                    except:
+                        try:
+                            # Try force delete with Windows attrib command
+                            subprocess.run(['attrib', '-R', '-S', '-H', file_path], 
+                                         shell=True, capture_output=True, timeout=5)
+                            os.remove(file_path)
+                        except:
+                            pass
+                
+                # Then try to remove directories
+                for dir in dirs:
+                    dir_path = os.path.join(root, dir)
+                    try:
+                        os.rmdir(dir_path)
+                    except:
+                        pass
+            
+            # Finally try to remove the root directory
+            try:
+                os.rmdir(directory_path)
+            except:
+                pass
+                
+        except Exception as e:
+            print(f"Error in file removal: {e}")
+
     def setup_ui(self):
         """Create and arrange all UI elements with modern design"""
         
@@ -983,7 +1116,14 @@ class ModernVarroaDetectorApp:
         """Run the analysis in a separate thread"""
         try:
             # Update progress
-            self.root.after(0, lambda: self.update_progress(10, "Loading AI detector..."))
+            self.root.after(0, lambda: self.update_progress(10, "Setting up analysis environment..."))
+            
+            # Create temporary directory for this analysis
+            self.temp_results_dir = tempfile.mkdtemp(prefix="varroa_analysis_", suffix=f"_{name}")
+            print(f"📁 Created temporary analysis directory: {self.temp_results_dir}")
+            
+            # Update progress
+            self.root.after(0, lambda: self.update_progress(20, "Loading AI detector..."))
             
             # Lazy import to avoid issues at startup
             try:
@@ -992,9 +1132,9 @@ class ModernVarroaDetectorApp:
                 raise RuntimeError(f"Could not import analysis module: {e}")
             
             # Update progress
-            self.root.after(0, lambda: self.update_progress(30, "Processing images with AI..."))
+            self.root.after(0, lambda: self.update_progress(40, "Processing images with AI..."))
             
-            # Run the actual prediction with all parameters
+            # Run the actual prediction with temporary output folder
             predict(
                 folder_path=folder_path,
                 name=name,
@@ -1003,7 +1143,8 @@ class ModernVarroaDetectorApp:
                 discobox_run=False,
                 num_recordings=num_recordings,
                 count=2,
-                time_between_rec=time_between_rec
+                time_between_rec=time_between_rec,
+                output_folder=self.temp_results_dir  # Use temp directory
             )
             
             # Update progress
@@ -1012,20 +1153,9 @@ class ModernVarroaDetectorApp:
             # Simulate final processing
             time.sleep(1)
             
-            # Find results folder in default outputs location
-            original_cwd = os.getcwd()
-            results_folder = os.path.join(original_cwd, "outputs", "results")
-            if os.path.exists(results_folder):
-                self.results_path = results_folder
-            else:
-                outputs_dir = os.path.join(original_cwd, "outputs")
-                if os.path.exists(outputs_dir):
-                    reanalysis_dirs = [d for d in os.listdir(outputs_dir) if d.startswith("reanalysis")]
-                    if reanalysis_dirs:
-                        latest = max(reanalysis_dirs, key=lambda x: int(x.replace("reanalysis", "") or "0"))
-                        self.results_path = os.path.join(outputs_dir, latest)
-                    else:
-                        self.results_path = outputs_dir
+            # Set results path to the temporary directory
+            self.results_path = self.temp_results_dir
+            print(f"✅ Analysis completed in: {self.temp_results_dir}")
             
             # Update UI on completion
             self.root.after(0, self.analysis_completed)
@@ -1091,7 +1221,7 @@ class ModernVarroaDetectorApp:
             messagebox.showinfo("Stopped", "Analysis has been stopped")
     
     def download_results_zip(self):
-        """Create and download results as ZIP file, then clean up outputs folder"""
+        """Create and download results as ZIP file, then clean up temporary folder"""
         if not self.results_path or not os.path.exists(self.results_path):
             messagebox.showwarning("No Results", "No results folder found to download")
             return
@@ -1147,24 +1277,8 @@ class ModernVarroaDetectorApp:
             # Create ZIP in separate thread
             def create_zip():
                 try:
-                    # Determine the specific reanalysis folder to zip
-                    outputs_dir = os.path.join(os.getcwd(), "outputs")
-                    folder_to_zip = None
-                    
-                    if os.path.exists(outputs_dir):
-                        # Find the latest reanalysis folder
-                        reanalysis_dirs = [d for d in os.listdir(outputs_dir) if d.startswith("reanalysis")]
-                        if reanalysis_dirs:
-                            # Get the latest reanalysis folder
-                            latest = max(reanalysis_dirs, key=lambda x: int(x.replace("reanalysis", "") or "0"))
-                            folder_to_zip = os.path.join(outputs_dir, latest)
-                        else:
-                            # If no reanalysis folder, check if results folder exists
-                            results_folder = os.path.join(outputs_dir, "results")
-                            if os.path.exists(results_folder):
-                                folder_to_zip = results_folder
-                            else:
-                                folder_to_zip = outputs_dir
+                    # Determine the results folder to zip (use temp directory)
+                    folder_to_zip = self.results_path
                     
                     if not folder_to_zip or not os.path.exists(folder_to_zip):
                         raise Exception("No results folder found to zip")
@@ -1172,7 +1286,7 @@ class ModernVarroaDetectorApp:
                     # Update progress text
                     self.root.after(0, lambda: progress_label.configure(text="Compressing files..."))
                     
-                    # Create the ZIP file with only the contents of the reanalysis folder
+                    # Create the ZIP file with the contents of the temporary results folder
                     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         for root, dirs, files in os.walk(folder_to_zip):
                             for file in files:
@@ -1183,32 +1297,38 @@ class ModernVarroaDetectorApp:
                                 zipf.write(file_path, arc_path)
                     
                     # Update progress text
-                    self.root.after(0, lambda: progress_label.configure(text="Cleaning up..."))
+                    self.root.after(0, lambda: progress_label.configure(text="Cleaning up temporary files..."))
                     
-                    # Remove only the specific reanalysis folder after successful ZIP creation
-                    if os.path.exists(folder_to_zip):
-                        shutil.rmtree(folder_to_zip)
-                        # Reset results path since folder is gone
-                        self.results_path = None
+                    # Clean up the temporary directory
+                    if self.temp_results_dir and os.path.exists(self.temp_results_dir):
+                        try:
+                            shutil.rmtree(self.temp_results_dir)
+                            print(f"✅ Cleaned up temporary directory: {self.temp_results_dir}")
+                            self.temp_results_dir = None
+                            self.results_path = None
+                        except Exception as cleanup_error:
+                            print(f"⚠️  Warning: Could not clean up temp directory: {cleanup_error}")
+                            # Don't fail the whole operation for cleanup issues
                     
                     # Get folder name for success message
-                    folder_name = os.path.basename(folder_to_zip)
+                    folder_name = "analysis_results"
                     
                     # Close progress window and show success
                     self.root.after(0, lambda: [
                         progress_window.destroy(),
                         self.download_button.configure(state="disabled", bg=self.colors['bg_tertiary']),
-                        self.results_info.configure(text="📁 Results have been downloaded and cleaned up", fg=self.colors['text_muted']),
+                        self.results_info.configure(text="📁 Results downloaded and temporary files cleaned up", fg=self.colors['text_muted']),
                         messagebox.showinfo(
-                            "ZIP Created",
-                            f"✅ Results from '{folder_name}' successfully saved to:\n{zip_path}\n\nFile size: {self.get_file_size(zip_path)}\n\n🗑️ Analysis folder cleaned up."
+                            "ZIP Created Successfully",
+                            f"✅ Analysis results have been saved to:\n{zip_path}\n\nFile size: {self.get_file_size(zip_path)}\n\n� Analysis folders will be cleaned up on next app startup."
                         )
                     ])
                     
                 except Exception as e:
+                    error_msg = str(e)
                     self.root.after(0, lambda: [
                         progress_window.destroy(),
-                        messagebox.showerror("ZIP Error", f"Failed to create ZIP file:\n{e}")
+                        messagebox.showerror("ZIP Error", f"Failed to create ZIP file:\n{error_msg}")
                     ])
             
             # Start ZIP creation
@@ -1217,6 +1337,42 @@ class ModernVarroaDetectorApp:
         except Exception as e:
             messagebox.showerror("Download Error", f"Failed to download results:\n{e}")
     
+    def safe_remove_folder(self, folder_path):
+        """Safely remove a folder with retry logic for Windows permission issues"""
+        import time
+        max_retries = 5
+        delay = 1  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                if os.path.exists(folder_path):
+                    # First try to make all files writable
+                    for root, dirs, files in os.walk(folder_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            try:
+                                os.chmod(file_path, 0o777)
+                            except:
+                                pass  # Ignore chmod errors
+                    
+                    # Try to remove the folder
+                    shutil.rmtree(folder_path)
+                    print(f"Successfully removed folder: {folder_path}")
+                    return
+                    
+            except PermissionError as e:
+                print(f"Attempt {attempt + 1}: Permission error removing {folder_path}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
+                else:
+                    print(f"Failed to remove folder after {max_retries} attempts. Manual cleanup may be required.")
+                    # Don't raise the exception - just log it and continue
+                    
+            except Exception as e:
+                print(f"Unexpected error removing folder {folder_path}: {e}")
+                break
+
     def get_file_size(self, file_path):
         """Get human readable file size"""
         size = os.path.getsize(file_path)
