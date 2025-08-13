@@ -14,12 +14,21 @@ if PROJECT_ROOT not in sys.path:
 def main():
     """Launch the Varroa Detector GUI application"""
     try:
-        from varroa_gui import main as gui_main
-        gui_main()
+        # Try the modern version first
+        from modern_gui_app import main as modern_main
+        print("🚀 Starting modern Varroa Detector GUI...")
+        modern_main()
     except ImportError as e:
-        print(f"Error importing GUI application: {e}")
-        print("Please make sure all required modules are available.")
-        input("Press Enter to exit...")
+        print(f"Modern GUI not available: {e}")
+        try:
+            # Fallback to standard version
+            from varroa_gui import main as standard_main
+            print("Starting standard Varroa Detector GUI...")
+            standard_main()
+        except ImportError as e2:
+            print(f"Error importing GUI applications: {e2}")
+            print("Please make sure all required modules are available.")
+            input("Press Enter to exit...")
     except Exception as e:
         print(f"Error starting application: {e}")
         input("Press Enter to exit...")

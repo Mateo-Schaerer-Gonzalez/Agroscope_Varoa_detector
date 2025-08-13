@@ -5,11 +5,14 @@ A user-friendly interface for analyzing bee mite images using YOLO detection.
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinterdnd2 import DND_FILES, TkinterDnD
 import threading
 import os
 import sys
 from pathlib import Path
 import time
+import zipfile
+import shutil
 
 
 class VarroaDetectorApp:
