@@ -617,6 +617,30 @@ class ModernVarroaDetectorApp:
         if self.selected_folder.get():
             self.load_and_display_first_image(self.selected_folder.get())
     
+    def refresh_zone_display(self):
+        """Refresh the zone display to reflect updated MiteManager data"""
+        print("🔄 Refreshing zone display...")
+        try:
+            if hasattr(self, 'selected_folder') and self.selected_folder and hasattr(self.selected_folder, 'get'):
+                folder_path = self.selected_folder.get()
+                if folder_path:
+                    print(f"🔄 Refreshing zones for folder: {folder_path}")
+                    self.load_and_display_first_image(folder_path)
+                    return
+            
+            # Alternative: try to refresh the current image if it exists
+            if hasattr(self, 'current_pil_image') and self.current_pil_image:
+                print("🔄 Refreshing current image with zone overlay")
+                # Convert PIL image to numpy array for zone overlay
+                image_array = np.array(self.current_pil_image)
+                image_with_zones = self.apply_zone_overlay(image_array)
+                self.display_image(image_with_zones)
+                return
+                
+            print("⚠️ Cannot refresh zones - no image loaded or folder selected")
+        except Exception as e:
+            print(f"❌ Error refreshing zone display: {e}")
+    
     def load_and_display_first_image(self, folder_path):
         """Load and display the first image from the dataset with zone overlay"""
         try:
@@ -698,29 +722,50 @@ class ModernVarroaDetectorApp:
             # Store zone coordinates for interaction (use zone_idx as class_id)
             self.zone_coordinates.append((zone_idx, x1, y1, x2, y2))
             
-            # Determine colors based on lock status
-            if self.zones_locked:
-                outline_color = (200, 50, 50)  # Red when locked
-                line_width = 5
+            # Get mite count for this zone
+            mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
+            
+            # Get zone text label first (needed for debug output)
+            if hasattr(mite_zone, 'zone_id') and mite_zone.zone_id:
+                zone_text = str(mite_zone.zone_id)
             else:
-                outline_color = (100, 255, 100)  # Green when unlocked  
+                zone_text = f"Zone {zone_idx + 1}"
+            
+            # Determine colors based on mite presence, regardless of lock status
+            if mite_count > 0:
+                # Zone has detected mites - always use green to indicate data found
+                outline_color = (50, 255, 50)  # Bright green when mites detected
+                line_width = 4
+                if self.zones_locked:
+                    color_status = f"MITES DETECTED (green) - {mite_count} mites - LOCKED"
+                else:
+                    color_status = f"MITES DETECTED (green) - {mite_count} mites - UNLOCKED"
+            elif self.zones_locked:
+                # Zone has no mites and is locked - use red
+                outline_color = (200, 50, 50)  # Red when locked and no mites
+                line_width = 5
+                color_status = "NO MITES (red) - LOCKED"
+            else:
+                # Zone has no mites and is unlocked - use orange
+                outline_color = (255, 165, 0)  # Orange when unlocked and no mites
                 line_width = 3
+                color_status = "NO MITES (orange) - UNLOCKED"
+                
+            print(f"Zone {zone_idx} ({zone_text}): {color_status}")
                 
             # Draw rectangle outline
             draw.rectangle([x1, y1, x2, y2], outline=outline_color, width=line_width)
             
             # Add zone label using actual zone_id from MiteManager
-            mite_count = len(mite_zone.mites) if hasattr(mite_zone, 'mites') else 0
-            
-            # Use the zone_id from the MiteZone if available, otherwise use index
-            if hasattr(mite_zone, 'zone_id') and mite_zone.zone_id:
-                zone_text = str(mite_zone.zone_id)
-            else:
-                zone_text = f"Zone {zone_idx + 1}"
-                
+            # Zone text already defined above, just add lock indicator if needed
             if self.zones_locked:
                 zone_text += " 🔒"
-            zone_text += f" ({mite_count} mites)"
+            
+            # Add visual indicators based on mite detection status
+            if mite_count > 0:
+                zone_text += f" 🔍 ({mite_count} mites detected)"
+            else:
+                zone_text += f" ✅ (No mites)"
             
             try:
                 # Try to use a font, fallback to default if not available
@@ -1721,7 +1766,10 @@ class ModernVarroaDetectorApp:
                 self.mite_manager_loaded = True
                 print(f"✅ Loaded MiteManager during analysis with {len(self.mite_manager.zones)} zones")
                 
-                # Update zone display if image is loaded
+                # Update zone display with new colors to reflect detected mites
+                self.root.after(100, self.refresh_zone_display)  # Small delay to ensure UI is ready
+                
+                # Update zone display if image is loaded (legacy method)
                 if hasattr(self, 'current_pil_image') and self.current_pil_image:
                     # Refresh the image display with updated zone info
                     if hasattr(self, 'selected_folder') and self.selected_folder.get():
@@ -1799,7 +1847,9 @@ class ModernVarroaDetectorApp:
         """Handle successful analysis completion"""
         self.analysis_running = False
         self.analysis_complete_flag = True  # Mark analysis as completed for text verification
-        # Zones are already locked from when analysis started
+        
+        # Unlock zones to show the updated colors based on detected mites
+        self.unlock_zones()
         
         # Update UI elements if they exist
         if hasattr(self, 'start_button'):
@@ -1878,6 +1928,12 @@ class ModernVarroaDetectorApp:
         # Enable zone selection controls if they exist
         if hasattr(self, 'plates_combobox'):
             self.plates_combobox.configure(state="readonly")
+        
+        # Refresh zone display to show updated colors
+        if hasattr(self, 'root'):
+            self.root.after(100, self.refresh_zone_display)  # Small delay to ensure UI is ready
+        else:
+            self.refresh_zone_display()
     
     def load_analysis_results(self):
         """Load analysis results and populate mite data from MiteManager"""
@@ -1916,6 +1972,10 @@ class ModernVarroaDetectorApp:
                     
                     print(f"✅ Loaded MiteManager with {len(self.mite_manager.zones)} zones")
                     mite_manager_found = True
+                    
+                    # Update zone display colors to reflect detected mites
+                    self.refresh_zone_display()
+                    
                     break
             
             if mite_manager_found:
@@ -1947,6 +2007,10 @@ class ModernVarroaDetectorApp:
                 
                 # Update mite list display
                 self.update_mite_list_display()
+                
+                # Refresh zone display to show updated colors based on detected mites
+                self.refresh_zone_display()
+                
                 return
                 
         except Exception as e:
