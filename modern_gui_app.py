@@ -161,10 +161,15 @@ class ModernVarroaDetectorApp:
         self.zones_locked = False
         self.mite_zones = []
         self.current_hover_zone = None
+        self.selected_zone = None  # New: Currently selected zone for persistent display
         self.zone_coordinates = []
         self.canvas_scale = 1.0
         self.canvas_offset_x = 0
         self.canvas_offset_y = 0
+        self.text_verification_active = False  # New: Flag for verification mode
+        self.analysis_paused = False  # New: Flag to pause analysis during verification
+        self.recording1_pause = False  # New: Flag for automatic pause after recording 1
+        self.continue_analysis_params = None  # New: Store analysis parameters for continuation
         
         # MiteManager integration
         self.mite_manager = None  # Will store the MiteManager instance after analysis
@@ -731,8 +736,13 @@ class ModernVarroaDetectorApp:
             else:
                 zone_text = f"Zone {zone_idx + 1}"
             
-            # Determine colors based on mite presence, regardless of lock status
-            if mite_count > 0:
+            # Determine colors based on selection state and mite presence
+            if self.selected_zone == zone_idx:
+                # Selected zone - use bright blue/purple
+                outline_color = (255, 100, 255)  # Bright magenta for selected
+                line_width = 6
+                color_status = f"SELECTED ZONE - {mite_count} mites"
+            elif mite_count > 0:
                 # Zone has detected mites - always use green to indicate data found
                 outline_color = (50, 255, 50)  # Bright green when mites detected
                 line_width = 4
@@ -779,8 +789,8 @@ class ModernVarroaDetectorApp:
             draw.rectangle(text_bbox, fill=bg_color)
             draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
             
-            # Add click indicator if analysis is completed
-            if self.analysis_complete_flag and not self.zones_locked and mite_count > 0:
+            # Add click indicator if analysis is completed or during recording 1 pause
+            if (self.analysis_complete_flag or self.recording1_pause) and not self.zones_locked and mite_count > 0:
                 click_text = "Click to verify"
                 click_bbox = draw.textbbox((x1, y2+5), click_text, font=font)
                 draw.rectangle(click_bbox, fill=(100, 100, 255))
@@ -812,7 +822,7 @@ class ModernVarroaDetectorApp:
         }
         
         # Draw each zone
-        for line in lines:
+        for zone_idx, line in enumerate(lines):
             parts = line.strip().split()
             if len(parts) >= 5:
                 class_id = int(parts[0])
@@ -824,12 +834,17 @@ class ModernVarroaDetectorApp:
                 # Store zone coordinates for interaction
                 self.zone_coordinates.append((class_id, x1, y1, x2, y2))
                 
-                # Get color for this class
-                color = colors.get(class_id, (100, 100, 255, 128))
-                
-                # Draw rectangle outline - thicker if zones are locked
-                line_width = 5 if self.zones_locked else 3
-                outline_color = color[:3] if not self.zones_locked else (200, 50, 50)  # Red when locked
+                # Get color for this class, considering selection state
+                if self.selected_zone is not None and zone_idx == self.selected_zone:
+                    # This zone is selected
+                    outline_color = (255, 100, 255)  # Bright magenta for selected
+                    line_width = 6
+                elif self.zones_locked:
+                    outline_color = (200, 50, 50)  # Red when locked
+                    line_width = 5
+                else:
+                    outline_color = colors.get(class_id, (100, 100, 255, 128))[:3]
+                    line_width = 3
                 
                 draw.rectangle([x1, y1, x2, y2], outline=outline_color, width=line_width)
                 
@@ -846,12 +861,12 @@ class ModernVarroaDetectorApp:
                 
                 # Draw text background
                 text_bbox = draw.textbbox((x1, y1-25), zone_text, font=font)
-                bg_color = outline_color if self.zones_locked else color[:3]
+                bg_color = outline_color
                 draw.rectangle(text_bbox, fill=bg_color)
                 draw.text((x1, y1-25), zone_text, fill=(255, 255, 255), font=font)
                 
-                # Add click indicator if analysis is completed
-                if self.analysis_complete_flag and not self.zones_locked:
+                # Add click indicator if analysis is completed or during recording 1 pause
+                if (self.analysis_complete_flag or self.recording1_pause) and not self.zones_locked:
                     click_text = "Click to verify"
                     click_bbox = draw.textbbox((x1, y2+5), click_text, font=font)
                     draw.rectangle(click_bbox, fill=(100, 100, 255))
@@ -1031,7 +1046,7 @@ class ModernVarroaDetectorApp:
         
         subtitle_label = tk.Label(
             header_frame,
-            text="Preview of the first image with zone boundaries. Click zones to verify text after analysis.",
+            text="Preview of the first image with zone boundaries. Click zones to verify text during analysis pause or after completion.",
             font=self.fonts['small'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_secondary']
@@ -1192,7 +1207,21 @@ class ModernVarroaDetectorApp:
             relief='flat',
             pady=5
         )
-        self.verify_button.pack(fill="x", pady=(5, 0))
+        self.verify_button.pack(fill="x", pady=(5, 2))
+        
+        # Verify All Texts button
+        self.verify_all_button = tk.Button(
+            verification_frame,
+            text="✅ Verify All Texts",
+            font=self.fonts['small'],
+            bg=self.colors['warning'],
+            fg='white',
+            state="disabled",
+            relief='flat',
+            pady=5,
+            command=self.start_text_verification_mode
+        )
+        self.verify_all_button.pack(fill="x", pady=(2, 0))
     
     def on_image_hover(self, event):
         """Handle mouse hover over the image canvas"""
@@ -1210,19 +1239,21 @@ class ModernVarroaDetectorApp:
         # Check which zone we're hovering over
         hovered_zone = self.get_zone_at_point(img_x, img_y)
         
-        if hovered_zone != self.current_hover_zone:
+        # Only update hover info if no zone is currently selected
+        if self.selected_zone is None and hovered_zone != self.current_hover_zone:
             self.current_hover_zone = hovered_zone
             self.update_hover_info(hovered_zone)
             
-        # Change cursor if over a clickable zone (after analysis)
-        if self.analysis_complete_flag and hovered_zone is not None:
+        # Change cursor if over a clickable zone (after analysis or during recording 1 pause)
+        if (self.analysis_complete_flag or self.recording1_pause) and hovered_zone is not None:
             self.image_canvas.configure(cursor="hand2")
         else:
             self.image_canvas.configure(cursor="")
     
     def on_image_click(self, event):
         """Handle mouse click on the image canvas"""
-        if not self.analysis_complete_flag or not self.zone_coordinates:
+        # Allow zone clicking if analysis is complete OR if we're in recording 1 pause
+        if not (self.analysis_complete_flag or self.recording1_pause) or not self.zone_coordinates:
             return
             
         # Get mouse coordinates relative to the image
@@ -1237,7 +1268,30 @@ class ModernVarroaDetectorApp:
         clicked_zone = self.get_zone_at_point(img_x, img_y)
         
         if clicked_zone is not None:
-            self.open_text_verification_dialog(clicked_zone)
+            # Toggle zone selection
+            if self.selected_zone == clicked_zone:
+                # Deselect if already selected
+                self.selected_zone = None
+                self.update_zone_info_display(None)
+            else:
+                # Select the zone
+                self.selected_zone = clicked_zone
+                self.update_zone_info_display(clicked_zone)
+                # Enable text verification mode
+                self.text_verification_active = True
+                self.update_verify_button_state()
+            
+            # Refresh display to show selection visually - use immediate update
+            print(f"🖱️ Zone {clicked_zone + 1} {'deselected' if self.selected_zone is None else 'selected'}")
+            self.root.after_idle(self.refresh_zone_display)  # Use after_idle for immediate update
+        else:
+            # Clicked outside any zone - deselect
+            self.selected_zone = None
+            self.text_verification_active = False
+            self.update_zone_info_display(None)
+            self.update_verify_button_state()
+            # Refresh display to remove selection - use immediate update
+            self.root.after_idle(self.refresh_zone_display)
     
     def on_image_leave(self, event):
         """Handle mouse leaving the image canvas"""
@@ -1316,6 +1370,265 @@ class ModernVarroaDetectorApp:
             )
             
             print(f"Debug: Fallback zone {zone_index}: label='{zone_label}', mites={mite_count}")
+    
+    def update_zone_info_display(self, zone_index):
+        """Update the zone information display for selected zone with text editing capability"""
+        if zone_index is None:
+            # Clear the display and show default hover text
+            self.hover_zone_info.configure(
+                text="Hover over a zone to see details",
+                fg=self.colors['text_muted']
+            )
+            # Clear any text editing widgets if they exist
+            if hasattr(self, 'zone_text_editor_frame'):
+                self.zone_text_editor_frame.destroy()
+                delattr(self, 'zone_text_editor_frame')
+            return
+        
+        # Get zone data
+        zone_data = self.get_zone_data(zone_index)
+        if not zone_data:
+            return
+        
+        # Display persistent zone info
+        zone_info = f"SELECTED: {zone_data['zone_label']}\nMites: {zone_data['mite_count']}"
+        if zone_data['detected_text']:
+            zone_info += f"\nDetected: {zone_data['detected_text']}"
+        zone_info += "\n\nClick zone again to deselect"
+        
+        self.hover_zone_info.configure(
+            text=zone_info,
+            fg=self.colors['accent']
+        )
+        
+        # Create text editor if it doesn't exist
+        self.create_zone_text_editor(zone_index, zone_data)
+    
+    def get_zone_data(self, zone_index):
+        """Get comprehensive zone data for display and editing"""
+        zone_data = {
+            'zone_label': f'Zone {zone_index + 1}',
+            'mite_count': 0,
+            'detected_text': '',
+            'zone_id': zone_index
+        }
+        
+        # Use MiteManager data if available
+        if hasattr(self, 'mite_manager') and self.mite_manager and hasattr(self.mite_manager, 'zones'):
+            if zone_index < len(self.mite_manager.zones):
+                zone = self.mite_manager.zones[zone_index]
+                
+                zone_data['zone_label'] = getattr(zone, 'zone_id', f'Zone {zone_index + 1}')
+                zone_data['mite_count'] = len(zone.mites) if hasattr(zone, 'mites') else 0
+                
+                # Get detected text from text zones
+                if hasattr(zone, 'text_zones') and zone.text_zones:
+                    for text_zone in zone.text_zones:
+                        if hasattr(text_zone, 'text') and text_zone.text:
+                            zone_data['detected_text'] = text_zone.text
+                            break
+                
+                return zone_data
+        
+        # Fallback to mite_zones data
+        zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
+        zone_data['mite_count'] = len(zone_mites)
+        
+        if zone_mites:
+            zone_data['zone_label'] = zone_mites[0].get('zone_label', f'Zone {zone_index + 1}')
+            zone_data['detected_text'] = zone_mites[0].get('detected_text', '')
+        
+        return zone_data
+    
+    def create_zone_text_editor(self, zone_index, zone_data):
+        """Create inline text editor for the selected zone"""
+        # Remove existing editor if any
+        if hasattr(self, 'zone_text_editor_frame'):
+            self.zone_text_editor_frame.destroy()
+        
+        # Find the parent frame for the zone info (should be right_frame)
+        parent = self.hover_zone_info.master
+        
+        # Create editor frame
+        self.zone_text_editor_frame = tk.Frame(parent, bg=self.colors['surface'], relief='flat', bd=1)
+        self.zone_text_editor_frame.pack(fill="x", padx=10, pady=(10, 0))
+        
+        # Editor title
+        editor_title = tk.Label(
+            self.zone_text_editor_frame,
+            text="Edit Zone ID:",
+            font=self.fonts['small'],
+            bg=self.colors['surface'],
+            fg=self.colors['text_secondary']
+        )
+        editor_title.pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Text input
+        self.zone_text_entry = tk.Entry(
+            self.zone_text_editor_frame,
+            font=self.fonts['body'],
+            bg=self.colors['bg_primary'],
+            fg=self.colors['text_primary'],
+            relief='flat',
+            bd=1
+        )
+        self.zone_text_entry.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Set current text
+        current_text = zone_data.get('detected_text', zone_data['zone_label'])
+        self.zone_text_entry.delete(0, tk.END)
+        self.zone_text_entry.insert(0, current_text)
+        
+        # Update button
+        update_button = tk.Button(
+            self.zone_text_editor_frame,
+            text="💾 Update Zone ID",
+            font=self.fonts['small'],
+            bg=self.colors['success'],
+            fg='white',
+            relief='flat',
+            pady=5,
+            command=lambda: self.update_zone_text(zone_index)
+        )
+        update_button.pack(fill="x", padx=10, pady=(0, 10))
+    
+    def update_zone_text(self, zone_index):
+        """Update the zone text/ID with the entered value"""
+        if not hasattr(self, 'zone_text_entry'):
+            return
+        
+        new_text = self.zone_text_entry.get().strip()
+        if not new_text:
+            messagebox.showwarning("Invalid Input", "Zone ID cannot be empty")
+            return
+        
+        # Update MiteManager zones if available
+        if hasattr(self, 'mite_manager') and self.mite_manager and hasattr(self.mite_manager, 'zones'):
+            if zone_index < len(self.mite_manager.zones):
+                zone = self.mite_manager.zones[zone_index]
+                
+                # Update zone ID
+                if hasattr(zone, 'zone_id'):
+                    zone.zone_id = new_text
+                
+                # Update text zones
+                if hasattr(zone, 'text_zones') and zone.text_zones:
+                    for text_zone in zone.text_zones:
+                        if hasattr(text_zone, 'text'):
+                            text_zone.text = new_text
+                else:
+                    # Create text zone if it doesn't exist (simplified)
+                    print(f"Creating new text zone for zone {zone_index} with text: {new_text}")
+        
+        # Update mite_zones data as fallback
+        zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
+        for mite in zone_mites:
+            mite['detected_text'] = new_text
+            mite['zone_label'] = new_text
+            mite['text_verified'] = True
+        
+        # Refresh display
+        self.update_zone_info_display(zone_index)
+        self.root.after_idle(self.refresh_zone_display)  # Use immediate refresh
+        
+        print(f"✅ Zone ID updated to: {new_text}")  # Print instead of popup
+    
+    def update_verify_button_state(self):
+        """Update the state of verification buttons based on current conditions"""
+        if (self.analysis_complete_flag or self.recording1_pause) and self.zone_coordinates:
+            # Enable individual zone editing
+            self.verify_button.configure(
+                text="🔍 Click Zone to Edit Text",
+                bg=self.colors['accent'],  # Use 'accent' instead of 'primary'
+                state="normal"
+            )
+            
+            # Enable verify all button
+            self.verify_all_button.configure(
+                state="normal",
+                bg=self.colors['warning'] if not self.analysis_paused else self.colors['success']
+            )
+            
+            if self.analysis_paused and not self.recording1_pause:
+                self.verify_all_button.configure(text="✅ Texts Verified - Resume")
+            else:
+                self.verify_all_button.configure(text="✅ Verify All Texts")
+        else:
+            # Disable buttons when analysis not complete or recording 1 not paused
+            self.verify_button.configure(
+                text="🔍 Click Zone to Edit Text",
+                bg=self.colors['text_muted'],
+                state="disabled"
+            )
+            self.verify_all_button.configure(
+                state="disabled",
+                bg=self.colors['text_muted']
+            )
+    
+    def start_text_verification_mode(self):
+        """Start or end text verification mode"""
+        if self.recording1_pause:
+            # During recording 1 pause, this button should do nothing special
+            # The verification is already active due to the pause
+            messagebox.showinfo(
+                "Text Verification Active",
+                "Text verification is already active during recording 1 pause.\n\n"
+                "Click on zones to edit their IDs.\n"
+                "Use 'Continue Analysis' button to proceed with recording 2."
+            )
+            return
+            
+        if not self.analysis_paused:
+            # Start verification mode - pause analysis
+            self.analysis_paused = True
+            self.text_verification_active = True
+            
+            # Update button to show "Resume" state
+            self.verify_all_button.configure(
+                text="✅ Texts Verified - Resume",
+                bg=self.colors['success'],
+                command=self.end_text_verification_mode
+            )
+            
+            # Show instruction message
+            messagebox.showinfo(
+                "Text Verification Mode", 
+                "Analysis paused for text verification.\n\n"
+                "Click on zones to edit their IDs.\n"
+                "Click 'Texts Verified - Resume' when done."
+            )
+            
+        else:
+            # End verification mode
+            self.end_text_verification_mode()
+    
+    def end_text_verification_mode(self):
+        """End text verification mode and resume analysis"""
+        if self.recording1_pause:
+            # During recording 1 pause, don't end verification mode
+            # User should use the Continue Analysis button instead
+            messagebox.showinfo(
+                "Use Continue Analysis",
+                "During recording 1 pause, please use the 'Continue Analysis' button to proceed."
+            )
+            return
+            
+        self.analysis_paused = False
+        self.text_verification_active = False
+        
+        # Deselect any selected zone
+        self.selected_zone = None
+        self.update_zone_info_display(None)
+        
+        # Update button back to verification state
+        self.verify_all_button.configure(
+            text="✅ Verify All Texts",
+            bg=self.colors['warning'],
+            command=self.start_text_verification_mode
+        )
+        
+        # Show confirmation
+        messagebox.showinfo("Verification Complete", "Text verification complete. Analysis resumed.")
     
     def open_text_verification_dialog(self, zone_index):
         """Open the text verification dialog for the clicked zone"""
@@ -1705,6 +2018,22 @@ class ModernVarroaDetectorApp:
         if not self.validate_inputs():
             return
         
+        # Check if text verification is active
+        if self.analysis_paused and not self.recording1_pause:
+            messagebox.showwarning(
+                "Analysis Paused", 
+                "Text verification is in progress. Please finish verifying texts before starting a new analysis."
+            )
+            return
+        
+        # Check if we're in recording 1 pause (should use continue instead)
+        if self.recording1_pause:
+            messagebox.showwarning(
+                "Use Continue Analysis",
+                "Recording 1 is complete. Please use 'Continue Analysis' to proceed with recording 2, or start a new analysis session."
+            )
+            return
+        
         # Update UI state
         self.analysis_running = True
         self.start_button.configure(state="disabled", bg=self.colors['bg_tertiary'])
@@ -1731,6 +2060,9 @@ class ModernVarroaDetectorApp:
         reanalyze = True  # Always run in reanalysis mode
         num_recordings = 2  # Default value for reanalysis
         time_between_rec = float(self.time_between_recordings.get())
+        
+        # Store parameters for potential continuation after recording 1
+        self.continue_analysis_params = (folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec)
         
         # Start analysis in separate thread
         analysis_thread = threading.Thread(
@@ -1766,6 +2098,9 @@ class ModernVarroaDetectorApp:
                 self.mite_manager_loaded = True
                 print(f"✅ Loaded MiteManager during analysis with {len(self.mite_manager.zones)} zones")
                 
+                # Pause analysis after recording 1 for text verification
+                self.pause_after_recording1()
+                
                 # Update zone display with new colors to reflect detected mites
                 self.root.after(100, self.refresh_zone_display)  # Small delay to ensure UI is ready
                 
@@ -1783,6 +2118,245 @@ class ModernVarroaDetectorApp:
         # Check again in 2 seconds if analysis is still running
         if self.analysis_running:
             self.root.after(2000, self.check_for_mite_manager)
+    
+    def pause_after_recording1(self):
+        """Pause analysis after recording 1 for text verification"""
+        print("⏸️ Pausing analysis after recording 1 for text verification...")
+        
+        # Set pause flags
+        self.recording1_pause = True
+        self.analysis_paused = True
+        
+        # Stop the analysis monitoring but keep the analysis running state temporarily
+        # This prevents the analysis thread from being considered "complete"
+        self.analysis_running = False  # This stops the monitoring loop
+        
+        # Unlock zones so they can be interacted with
+        self.unlock_zones()
+        
+        # Update UI to show pause state
+        self.root.after(0, self.update_ui_for_recording1_pause)
+        
+        # Show user notification
+        self.root.after(100, lambda: messagebox.showinfo(
+            "Recording 1 Complete",
+            "Recording 1 analysis is complete!\n\n"
+            "You can now verify and edit zone IDs.\n"
+            "Click 'Continue Analysis' to proceed with recording 2."
+        ))
+    
+    def simulate_recording1_pause(self):
+        """Simulate recording 1 pause when analysis completed without triggering it"""
+        print("🔄 Simulating recording 1 pause behavior...")
+        
+        # Don't show the notification popup since analysis is already complete
+        # Just enable text verification state
+        self.recording1_pause = False  # Don't set true since analysis is complete
+        self.analysis_paused = False   # Analysis is done, not paused
+        
+        # But enable verification features as if we paused
+        self.text_verification_active = True
+        
+        # Update button states to show verification is available
+        self.update_verify_button_state()
+    
+    def update_ui_for_recording1_pause(self):
+        """Update UI elements for recording 1 pause state"""
+        # Update progress
+        if hasattr(self, 'progress_label'):
+            self.progress_label.configure(
+                text="🔍 Recording 1 complete - Verify texts and continue",
+                fg=self.colors.get('warning', 'orange')
+            )
+        
+        # Update status
+        if hasattr(self, 'status_label'):
+            self.status_label.configure(text="⏸️ Paused for verification", fg=self.colors.get('warning', 'orange'))
+        
+        # Replace start button with continue button
+        if hasattr(self, 'start_button'):
+            self.start_button.configure(
+                text="➡️ Continue Analysis",
+                command=self.continue_analysis,
+                state="normal",
+                bg=self.colors.get('accent', 'blue')  # Use accent color with fallback
+            )
+        
+        # Enable verification buttons
+        self.update_verify_button_state()
+    
+    def pause_for_text_verification(self, mite_manager_instance):
+        """Callback function called by main.py after recording 1 to pause for text verification"""
+        print("⏸️ Analysis paused after recording 1 - starting text verification")
+        
+        # Store the mite manager instance for text verification
+        self.mite_manager = mite_manager_instance
+        
+        # Update progress to show pause
+        self.root.after(0, lambda: self.update_progress(60, "⏸️ Analysis paused - Please verify zone IDs"))
+        
+        # Trigger recording 1 pause setup on UI thread
+        self.root.after(0, self.setup_recording1_pause)
+        
+        # No need to block here - the main.py will handle the waiting
+        print("📱 GUI pause setup complete - text editing should now be available")
+        return True
+    
+    def setup_recording1_pause(self):
+        """Setup UI for recording 1 pause (called on UI thread)"""
+        # Enable recording 1 pause mode
+        self.recording1_pause = True
+        self.analysis_paused = True
+        
+        # If we have a mite manager from the pause callback, use it directly
+        if hasattr(self, 'mite_manager') and self.mite_manager:
+            print(f"✅ Using MiteManager from analysis pause with {len(self.mite_manager.zones)} zones")
+            self.load_mite_data_from_manager()
+        else:
+            # Fallback to loading from files
+            self.load_analysis_results()
+        
+        # Update buttons to show continue state
+        if hasattr(self, 'analyze_button'):
+            self.analyze_button.configure(
+                text="▶️ Continue to Recording 2",
+                state="normal",
+                command=self.continue_analysis,
+                bg=self.colors.get('accent', 'blue')
+            )
+        
+        # Enable verification buttons
+        self.update_verify_button_state()
+        
+        # Start checking analysis state periodically
+        self.check_analysis_state()
+    
+    def load_mite_data_from_manager(self):
+        """Load mite data directly from the MiteManager instance (for immediate pause)"""
+        if not self.mite_manager or not hasattr(self.mite_manager, 'zones'):
+            print("❌ No valid MiteManager available")
+            return False
+        
+        try:
+            print(f"🔄 Loading mite data from MiteManager with {len(self.mite_manager.zones)} zones")
+            
+            # Extract mite data from MiteManager zones
+            self.mite_zones = []
+            self.zone_coordinates = []  # Also populate zone coordinates for UI
+            zone_index = 0
+            
+            for zone in self.mite_manager.zones:
+                # Get zone coordinates
+                if hasattr(zone, 'coords') and zone.coords:
+                    x1, y1, x2, y2 = zone.coords
+                else:
+                    # Default coordinates if not available
+                    x1, y1, x2, y2 = 0, 0, 100, 100
+                
+                # Count mites in this zone
+                mite_count = len(zone.mites) if hasattr(zone, 'mites') else 0
+                
+                # Create zone data structure
+                zone_data = {
+                    'zone_id': f"Zone {zone_index + 1}",
+                    'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2,
+                    'mite_count': mite_count,
+                    'mites': zone.mites if hasattr(zone, 'mites') else [],
+                    'zone_index': zone_index
+                }
+                
+                self.mite_zones.append(zone_data)
+                
+                # Also add to zone_coordinates for UI compatibility
+                self.zone_coordinates.append((zone_index, x1, y1, x2, y2))
+                
+                zone_index += 1
+            
+            print(f"✅ Successfully loaded {len(self.mite_zones)} zones for text verification")
+            print(f"📍 Zone coordinates: {len(self.zone_coordinates)} zones ready for editing")
+            
+            # Refresh the zone display to show current mite data
+            self.refresh_zone_display()
+            
+            # Enable text editing immediately
+            self.unlock_zones()
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error loading mite data from manager: {e}")
+            return False
+    
+    def check_analysis_state(self):
+        """Periodically check if analysis is paused and needs UI updates"""
+        try:
+            from main import get_analysis_state
+            state = get_analysis_state()
+            
+            # If analysis just became paused and we haven't handled it yet
+            if state.paused and not self.recording1_pause and state.mite_manager:
+                print("🔄 Detected analysis pause - updating GUI...")
+                self.mite_manager = state.mite_manager
+                self.setup_recording1_pause()
+                
+        except Exception as e:
+            # Silently handle import errors (analysis might not be running)
+            pass
+        
+        # Schedule next check if analysis is still running
+        if self.analysis_running or hasattr(self, 'recording1_pause'):
+            self.root.after(1000, self.check_analysis_state)  # Check every second
+    
+    def continue_analysis(self):
+        """Continue analysis from recording 1 pause"""
+        if not self.recording1_pause:
+            return
+        
+        print("▶️ Continuing analysis from recording 1...")
+        
+        # Reset pause flags
+        self.recording1_pause = False
+        self.analysis_paused = False
+        
+        # Lock zones again for continued analysis
+        self.lock_zones()
+        
+        # Clear any selected zones
+        self.selected_zone = None
+        self.update_zone_info_display(None)
+        
+        # Update UI back to running state
+        self.analysis_running = True
+        if hasattr(self, 'start_button'):
+            self.start_button.configure(
+                text="🔄 Start Analysis",
+                command=self.start_analysis,
+                state="disabled",
+                bg=self.colors.get('bg_tertiary', 'lightgray')
+            )
+        
+        if hasattr(self, 'stop_button'):
+            self.stop_button.configure(state="normal", bg=self.colors.get('error', 'red'))
+        
+        if hasattr(self, 'progress_label'):
+            self.progress_label.configure(
+                text="Processing recording 2...",
+                fg=self.colors.get('text_primary', 'black')
+            )
+        
+        if hasattr(self, 'status_label'):
+            self.status_label.configure(text="● Running", fg=self.colors.get('warning', 'orange'))
+        
+        # Continue with the remaining analysis (recording 2)
+        # Use the new system to signal continuation
+        try:
+            from main import continue_analysis_from_gui
+            continue_analysis_from_gui()
+            print("✅ Analysis continuation signal sent successfully")
+        except Exception as e:
+            print(f"❌ Error continuing analysis: {e}")
+        
+        # Note: The original analysis thread will now continue with recording 2
     
     def run_analysis(self, folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec):
         """Run the analysis in a separate thread"""
@@ -1806,7 +2380,7 @@ class ModernVarroaDetectorApp:
             # Update progress
             self.root.after(0, lambda: self.update_progress(40, "Processing images with AI..."))
             
-            # Run the actual prediction with temporary output folder
+            # Run the actual prediction with temporary output folder and pause callback
             predict(
                 folder_path=folder_path,
                 name=name,
@@ -1816,7 +2390,8 @@ class ModernVarroaDetectorApp:
                 num_recordings=num_recordings,
                 count=2,
                 time_between_rec=time_between_rec,
-                output_folder=self.temp_results_dir  # Use temp directory
+                output_folder=self.temp_results_dir,  # Use temp directory
+                pause_callback=self.pause_for_text_verification  # Add pause callback for text verification
             )
             
             # Update progress
@@ -1848,12 +2423,24 @@ class ModernVarroaDetectorApp:
         self.analysis_running = False
         self.analysis_complete_flag = True  # Mark analysis as completed for text verification
         
+        # Reset recording 1 pause flags since full analysis is now complete
+        self.recording1_pause = False
+        self.analysis_paused = False
+        
         # Unlock zones to show the updated colors based on detected mites
         self.unlock_zones()
         
-        # Update UI elements if they exist
+        # Update verification button states
+        self.update_verify_button_state()
+        
+        # Reset start button back to normal start analysis function
         if hasattr(self, 'start_button'):
-            self.start_button.configure(state="normal", bg=self.colors.get('success', 'green'))
+            self.start_button.configure(
+                text="🔄 Start Analysis",
+                command=self.start_analysis,
+                state="normal", 
+                bg=self.colors.get('success', 'green')
+            )
         if hasattr(self, 'stop_button'):
             self.stop_button.configure(state="disabled", bg=self.colors.get('bg_tertiary', 'lightgray'))
         if hasattr(self, 'progress_bar'):
@@ -1877,6 +2464,16 @@ class ModernVarroaDetectorApp:
         
         # Load analysis results for text verification
         self.load_analysis_results()
+        
+        # Check if we should simulate recording 1 pause behavior
+        if hasattr(self, 'mite_manager') and self.mite_manager and not self.recording1_pause:
+            # If mites were detected and we haven't set up recording 1 pause, do it now
+            mites_found = any(len(zone.mites) > 0 if hasattr(zone, 'mites') else False 
+                             for zone in getattr(self.mite_manager, 'zones', []))
+            
+            if mites_found:
+                print("🔄 Simulating recording 1 pause - mites detected, enabling verification")
+                self.simulate_recording1_pause()
         
         # Enable text verification if UI exists
         if hasattr(self, 'verify_button'):

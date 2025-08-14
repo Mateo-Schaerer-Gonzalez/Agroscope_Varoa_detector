@@ -1,5 +1,7 @@
 import sys
 import os
+import threading
+import time
 
 # Ensure root of the project is in Python path
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +13,62 @@ from utils.tools import get_frames, convert_yolo_to_coords
 from classes.MiteManager import MiteManager
 from classes.PlotterModular import Plotter  # Use backwards compatible import
 from utils.tools import read_counter, reset_counter, write_counter
+
+
+class AnalysisState:
+    """Shared state for analysis pause/resume control"""
+    def __init__(self):
+        self.paused = False
+        self.continue_analysis = False
+        self.pause_event = threading.Event()
+        self.continue_event = threading.Event()
+        self.mite_manager = None
+        self.recording_number = 0
+        self.user_confirmed_continue = False
+    
+    def pause_after_recording1(self, mite_manager, recording_number=1):
+        """Pause the analysis after recording 1"""
+        self.paused = True
+        self.continue_analysis = False
+        self.user_confirmed_continue = False
+        self.mite_manager = mite_manager
+        self.recording_number = recording_number
+        self.pause_event.set()  # Signal that pause occurred
+        self.continue_event.clear()  # Clear continue event
+        print(f"⏸️ Analysis paused after recording {recording_number}")
+    
+    def resume_analysis(self):
+        """Resume analysis after user confirmation"""
+        if self.paused:
+            self.continue_analysis = True
+            self.user_confirmed_continue = True
+            self.paused = False
+            self.continue_event.set()  # Signal to continue
+            print("▶️ Analysis resuming...")
+    
+    def wait_for_continue(self, timeout=None):
+        """Wait for user to continue analysis"""
+        if self.paused:
+            print("⏳ Waiting for user to continue analysis...")
+            self.continue_event.wait(timeout)
+            return self.user_confirmed_continue
+        return True
+
+
+# Global analysis state instance
+analysis_state = AnalysisState()
+
+
+def continue_analysis_from_gui():
+    """Function called by GUI to continue analysis after pause"""
+    print("📱 GUI requested analysis continuation")
+    analysis_state.resume_analysis()
+    return True
+
+
+def get_analysis_state():
+    """Get the current analysis state for GUI"""
+    return analysis_state
 
 
 
@@ -74,7 +132,7 @@ def _generate_summary_reports(plotter, stage):
 
 
 def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recording, 
-                       discobox_run, name, ground_truth):
+                       discobox_run, name, ground_truth, pause_callback=None, pause_after_recording1=False):
     """Reanalyze recordings and generate comprehensive reports."""
     # Guard clauses - frames_by_recording is a list of numpy stacks
     if not frames_by_recording or len(frames_by_recording) == 0:
@@ -82,6 +140,13 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
     
     if not detector:
         raise ValueError("Detector not provided")
+    
+    # Reset analysis state at the beginning
+    analysis_state.paused = False
+    analysis_state.continue_analysis = False
+    analysis_state.user_confirmed_continue = False
+    analysis_state.pause_event.clear()
+    analysis_state.continue_event.clear()
     
     reanalyze_path = _create_reanalysis_directory(results_base)
     
@@ -97,12 +162,90 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
             detector, frames, num_per_plate, name, ground_truth,
             results_folder, discobox_run, recording_number
         )
+        
+        # Check for pause after recording 1
+        if pause_after_recording1 and recording_number == 1:
+            print(f"🔄 Recording {recording_number} complete - pausing for text verification...")
+            
+            # Pause the analysis and store the mite manager
+            analysis_state.pause_after_recording1(stage, recording_number)
+            
+            # Call pause callback if provided (for GUI integration)
+            if pause_callback:
+                print("📞 Calling GUI pause callback...")
+                pause_callback(stage)
+            
+            # Wait indefinitely for user to continue
+            print("⏸️ Analysis is now paused. Waiting for user confirmation to continue...")
+            analysis_state.wait_for_continue()
+            
+            # Check if user actually confirmed continuation
+            if not analysis_state.user_confirmed_continue:
+                print("❌ User did not confirm continuation - stopping analysis")
+                return
+            
+            print("✅ User confirmed continuation - proceeding with recording 2...")
     
     # Generate summary reports if we processed any recordings
     if plotter and stage:
         _generate_summary_reports(plotter, stage)
 
-   
+
+def continue_reanalyze_from_recording2(results_base, num_per_plate, detector, frames_by_recording, 
+                                     discobox_run, name, ground_truth):
+    """Continue reanalysis from recording 2 after pause."""
+    # Guard clauses
+    if not frames_by_recording or len(frames_by_recording) < 2:
+        raise ValueError("Need at least 2 recordings to continue from recording 2")
+    
+    if not detector:
+        raise ValueError("Detector not provided")
+    
+    # Find the existing reanalysis directory
+    reanalyze_path = None
+    i = 1
+    while True:
+        potential_path = os.path.join(results_base, f"reanalysis{i}")
+        if os.path.exists(potential_path):
+            # Check if recording1 exists but recording2 doesn't
+            recording1_path = os.path.join(potential_path, "recording1")
+            recording2_path = os.path.join(potential_path, "recording2")
+            if os.path.exists(recording1_path) and not os.path.exists(recording2_path):
+                reanalyze_path = potential_path
+                break
+            i += 1
+        else:
+            break
+    
+    if not reanalyze_path:
+        raise ValueError("No paused analysis found to continue")
+    
+    print(f"📁 Continuing analysis from: {reanalyze_path}")
+    
+    plotter = None
+    stage = None
+    
+    # Process remaining recordings (starting from recording 2)
+    for i in range(1, len(frames_by_recording)):  # Start from index 1 (recording 2)
+        recording_number = i + 1
+        frames = frames_by_recording[i]
+        results_folder = os.path.join(reanalyze_path, f"recording{recording_number}")
+        
+        print(f"🔄 Processing recording {recording_number}...")
+        plotter, stage = _process_single_recording(
+            detector, frames, num_per_plate, name, ground_truth,
+            results_folder, discobox_run, recording_number
+        )
+    
+    # Generate summary reports
+    if plotter and stage:
+        _generate_summary_reports(plotter, stage)
+    
+    # Remove pause file if it exists
+    pause_file = os.path.join(reanalyze_path, "pause_analysis.flag")
+    if os.path.exists(pause_file):
+        os.remove(pause_file)
+        print("🗑️ Removed pause flag file")
 
 
 def analyze_recording(results_base, num_per_plate, detector, frames, discobox_run, 
@@ -149,7 +292,8 @@ def _validate_predict_inputs(folder_path, name, num_per_plate):
         raise ValueError("Name must be provided")
 
 def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, 
-           num_recordings=2, count=2, time_between_rec=1, output_folder=None):
+           num_recordings=2, count=2, time_between_rec=1, output_folder=None, 
+           pause_callback=None):
     """Main prediction function that orchestrates the analysis process."""
     # Guard clauses
     _validate_predict_inputs(folder_path, name, num_per_plate)
@@ -174,8 +318,11 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
     results_base = _determine_results_base(folder_path, discobox_run, output_folder)
     
     if reanalyze:
+        # For GUI: always pause after recording 1 if we have a callback and more than 1 recording
+        should_pause = pause_callback is not None and len(frames) > 1
+        
         reanalyze_recording(results_base, num_per_plate, detector, frames, 
-                          discobox_run, name, ground_truth)
+                          discobox_run, name, ground_truth, pause_callback, should_pause)
     else:
         analyze_recording(results_base, num_per_plate, detector, frames, discobox_run, 
                         name, num_recordings, ground_truth, count, time_between_rec)
