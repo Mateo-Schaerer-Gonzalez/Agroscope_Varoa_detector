@@ -63,11 +63,11 @@ class SplashScreen:
         self.splash.configure(bg='#2d7d32')
         self.splash.overrideredirect(True)
         
-        # Center splash screen
-        self.center_splash()
-        
-        # Create splash content
+        # Create splash content first
         self.create_splash_content()
+        
+        # Center splash screen after content is created
+        self.center_splash()
         
         # Auto close after duration
         self.splash.after(self.duration, self.close_splash)
@@ -77,10 +77,35 @@ class SplashScreen:
         self.splash.focus_force()
         
     def center_splash(self):
+        # Force window to update and calculate actual size
         self.splash.update_idletasks()
-        x = (self.splash.winfo_screenwidth() // 2) - 300
-        y = (self.splash.winfo_screenheight() // 2) - 200
-        self.splash.geometry(f"600x400+{x}+{y}")
+        
+        # Get screen dimensions
+        screen_width = self.splash.winfo_screenwidth()
+        screen_height = self.splash.winfo_screenheight()
+        
+        # Get window dimensions (use requested size if actual size not ready)
+        window_width = self.splash.winfo_reqwidth() if self.splash.winfo_width() <= 1 else self.splash.winfo_width()
+        window_height = self.splash.winfo_reqheight() if self.splash.winfo_height() <= 1 else self.splash.winfo_height()
+        
+        # If still no size, use default
+        if window_width <= 1:
+            window_width = 600
+        if window_height <= 1:
+            window_height = 400
+        
+        # Calculate center position
+        x = (screen_width // 2) - (window_width // 2)
+        y = (screen_height // 2) - (window_height // 2)
+        
+        # Ensure window doesn't go off screen
+        x = max(0, x)
+        y = max(0, y)
+        
+        self.splash.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        # Force another update to ensure centering takes effect
+        self.splash.update_idletasks()
         
     def create_splash_content(self):
         # Main container
@@ -251,11 +276,14 @@ class ModernVarroaDetectorApp:
         # Create UI elements
         self.setup_ui()
         
-        # Center the window
+        # Center the window after UI is created
         self.center_window()
         
         # Show main window
         self.root.deiconify()
+        
+        # Ensure centering after window is shown (sometimes needed for proper sizing)
+        self.root.after(100, self.center_window)
     
     def setup_modern_styles(self):
         """Configure modern light green visual styling"""
@@ -324,12 +352,41 @@ class ModernVarroaDetectorApp:
     
     def center_window(self):
         """Center the window on the screen"""
+        # Force window to update and get accurate dimensions
         self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f'{width}x{height}+{x}+{y}')
+        
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # Get window dimensions
+        window_width = self.root.winfo_width()
+        window_height = self.root.winfo_height()
+        
+        # If window size is not yet calculated, use the requested size
+        if window_width <= 1:
+            window_width = self.root.winfo_reqwidth()
+        if window_height <= 1:
+            window_height = self.root.winfo_reqheight()
+            
+        # If still no proper size, use default geometry
+        if window_width <= 1 or window_height <= 1:
+            window_width = 1000
+            window_height = 800
+        
+        # Calculate center position
+        x = (screen_width // 2) - (window_width // 2)
+        y = (screen_height // 2) - (window_height // 2)
+        
+        # Ensure window doesn't go off screen
+        x = max(0, min(x, screen_width - window_width))
+        y = max(0, min(y, screen_height - window_height))
+        
+        # Set window position and size
+        self.root.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Force another update to ensure positioning takes effect
+        self.root.update_idletasks()
     
     def cleanup_previous_results(self):
         """Clean up any previous analysis results at startup when no files are in use"""
