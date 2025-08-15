@@ -162,6 +162,8 @@ class MiteManager:
         print(f"Assigned mites: {assigned_count}")
         
         self._read_zone_labels()
+        # Save stage after mites and text zones are assigned
+        self.save()
 
     def _assign_mite_to_zone(self, mite):
         """Assign a mite to an appropriate zone."""

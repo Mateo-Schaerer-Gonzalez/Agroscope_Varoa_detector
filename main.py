@@ -122,6 +122,39 @@ def _process_single_recording(detector, frames, num_per_plate, name, ground_trut
     return plotter, stage
 
 
+def _process_recording0(detector, frames, num_per_plate, name, discobox_run, results_folder=None):
+    """Lightweight preliminary pass (recording 0).
+    Purpose: run detection, read text zones, persist a MiteManager stage to disk
+    so the GUI can load and allow user edits before recording 1 runs.
+
+    This function intentionally does NOT create plots or call save_data.
+    """
+    if frames is None or len(frames) == 0:
+        raise ValueError("No frames provided for recording0")
+
+    os.makedirs(results_folder or os.path.join("outputs", "recording0"), exist_ok=True)
+
+    # Run detection on the first frame
+    detector.run_detection(frames[0])
+
+    # Create stage manager from the detection result; MiteManager will read text zones
+    stage = MiteManager(
+        coordinate_file=f"Zoning/coordinates{num_per_plate}.txt",
+        mites_detection=detector.result,
+        frames=frames,
+        name=name
+    )
+
+    # Persist the stage to disk so GUI can load it for verification
+    try:
+        stage.save()
+    except Exception:
+        # MiteManager.getMites may already call save(); ignore save failures here
+        pass
+
+    return stage
+
+
 def _generate_summary_reports(plotter, stage):
     """Generate summary reports and plots."""
     plotter.make_survival_time_graph()
@@ -153,38 +186,41 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
     plotter = None
     stage = None
     
-    # Process each recording
-    for i, frames in enumerate(frames_by_recording):
+    # First run a lightweight recording0: detect + read text + save stage only
+    try:
+        print("🔎 Running preliminary recording0 (detect + read text) to produce editable stage")
+        frames0 = frames_by_recording[0]
+        stage0 = _process_recording0(detector, frames0, num_per_plate, name, discobox_run,
+                                     results_folder=os.path.join(reanalyze_path, "recording0"))
+
+        # Pause and hand the stage to the GUI for verification before recording1
+        analysis_state.pause_after_recording1(stage0, recording_number=0)
+        if pause_callback:
+            print("📞 Calling GUI pause callback for recording0 stage...")
+            pause_callback(stage0)
+
+        print("⏸️ Analysis paused after recording0. Waiting for user confirmation to continue...")
+        analysis_state.wait_for_continue()
+
+        if not analysis_state.user_confirmed_continue:
+            print("❌ User did not confirm continuation after recording0 - stopping analysis")
+            return
+
+        print("✅ User confirmed continuation after recording0 - proceeding with recording 1...")
+
+    except Exception as e:
+        print(f"Warning: recording0 pass failed: {e}")
+
+    # Process each recording starting at recording 1
+    for i in range(0, len(frames_by_recording)):
         recording_number = i + 1
+        frames = frames_by_recording[i]
         results_folder = os.path.join(reanalyze_path, f"recording{recording_number}")
         
         plotter, stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
             results_folder, discobox_run, recording_number
         )
-        
-        # Check for pause after recording 1
-        if pause_after_recording1 and recording_number == 1:
-            print(f"🔄 Recording {recording_number} complete - pausing for text verification...")
-            
-            # Pause the analysis and store the mite manager
-            analysis_state.pause_after_recording1(stage, recording_number)
-            
-            # Call pause callback if provided (for GUI integration)
-            if pause_callback:
-                print("📞 Calling GUI pause callback...")
-                pause_callback(stage)
-            
-            # Wait indefinitely for user to continue
-            print("⏸️ Analysis is now paused. Waiting for user confirmation to continue...")
-            analysis_state.wait_for_continue()
-            
-            # Check if user actually confirmed continuation
-            if not analysis_state.user_confirmed_continue:
-                print("❌ User did not confirm continuation - stopping analysis")
-                return
-            
-            print("✅ User confirmed continuation - proceeding with recording 2...")
     
     # Generate summary reports if we processed any recordings
     if plotter and stage:

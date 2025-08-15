@@ -17,7 +17,42 @@ from datetime import datetime
 import tempfile
 import cv2
 import numpy as np
+import pickle
 from PIL import Image, ImageTk, ImageDraw, ImageFont
+
+
+# Replace interactive messagebox dialogs with a silent shim that prints to console
+# and avoids blocking GUI flow. This removes modal prompts while preserving
+# console visibility for debugging.
+class _SilentMessageBox:
+    def showinfo(self, title, message, **kwargs):
+        try:
+            print(f"INFO: {title} - {message}")
+            # Update status label if available on the main app
+            # (we check dynamically where used)
+        except Exception:
+            pass
+
+    def showwarning(self, title, message, **kwargs):
+        try:
+            print(f"WARNING: {title} - {message}")
+        except Exception:
+            pass
+
+    def showerror(self, title, message, **kwargs):
+        try:
+            print(f"ERROR: {title} - {message}")
+        except Exception:
+            pass
+
+    def askyesno(self, title, message, **kwargs):
+        # Default to True when code expects confirmation; the GUI now auto-loads stages.
+        print(f"ASK (auto-yes): {title} - {message}")
+        return True
+
+
+# Shadow the imported messagebox with the silent shim to disable modal prompts
+messagebox = _SilentMessageBox()
 
 class SplashScreen:
     def __init__(self, duration=3000):
@@ -192,6 +227,13 @@ class ModernVarroaDetectorApp:
         
         # Configure modern styling
         self.setup_modern_styles()
+        # Load MiteManager stage if available
+        mite_manager_path = os.path.join(os.path.dirname(__file__), "classes", "mite_manager.plk")
+        if os.path.exists(mite_manager_path):
+            from classes.MiteManager import MiteManager
+            with open(mite_manager_path, 'rb') as f:
+                self.mite_manager = pickle.load(f)
+            print(f"✅ Loaded MiteManager at startup with {len(self.mite_manager.zones)} zones")
         
         # Variables
         self.selected_folder = tk.StringVar()
@@ -602,7 +644,7 @@ class ModernVarroaDetectorApp:
                 self.animate_drop_success()
                 self.load_and_display_first_image(folder_path)
             else:
-                messagebox.showwarning("Invalid Drop", "Please drop a folder, not a file.")
+                print("WARNING: Invalid Drop - Please drop a folder, not a file.")
     
     def animate_drop_success(self):
         """Animate successful drop"""
@@ -1499,7 +1541,7 @@ class ModernVarroaDetectorApp:
         
         new_text = self.zone_text_entry.get().strip()
         if not new_text:
-            messagebox.showwarning("Invalid Input", "Zone ID cannot be empty")
+            print("WARNING: Invalid Input - Zone ID cannot be empty")
             return
         
         # Update MiteManager zones if available
@@ -1519,6 +1561,14 @@ class ModernVarroaDetectorApp:
                 else:
                     # Create text zone if it doesn't exist (simplified)
                     print(f"Creating new text zone for zone {zone_index} with text: {new_text}")
+
+                # Persist the updated MiteManager immediately so zone_id changes are not lost
+                try:
+                    if hasattr(self, 'mite_manager') and self.mite_manager:
+                        self.mite_manager.save()
+                        print(f"✅ Persisted MiteManager after updating zone {zone_index}")
+                except Exception as e:
+                    print(f"Warning: Could not persist MiteManager after zone update: {e}")
         
         # Update mite_zones data as fallback
         zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
@@ -1570,12 +1620,7 @@ class ModernVarroaDetectorApp:
         if self.recording1_pause:
             # During recording 1 pause, this button should do nothing special
             # The verification is already active due to the pause
-            messagebox.showinfo(
-                "Text Verification Active",
-                "Text verification is already active during recording 1 pause.\n\n"
-                "Click on zones to edit their IDs.\n"
-                "Use 'Continue Analysis' button to proceed with recording 2."
-            )
+            print("INFO: Text verification is already active during recording 1 pause. Click on zones to edit their IDs. Use 'Continue Analysis' to proceed.")
             return
             
         if not self.analysis_paused:
@@ -1591,12 +1636,7 @@ class ModernVarroaDetectorApp:
             )
             
             # Show instruction message
-            messagebox.showinfo(
-                "Text Verification Mode", 
-                "Analysis paused for text verification.\n\n"
-                "Click on zones to edit their IDs.\n"
-                "Click 'Texts Verified - Resume' when done."
-            )
+            print("INFO: Analysis paused for text verification. Click on zones to edit their IDs. Click 'Texts Verified - Resume' when done.")
             
         else:
             # End verification mode
@@ -1607,10 +1647,7 @@ class ModernVarroaDetectorApp:
         if self.recording1_pause:
             # During recording 1 pause, don't end verification mode
             # User should use the Continue Analysis button instead
-            messagebox.showinfo(
-                "Use Continue Analysis",
-                "During recording 1 pause, please use the 'Continue Analysis' button to proceed."
-            )
+            print("INFO: During recording 1 pause, please use the 'Continue Analysis' button to proceed.")
             return
             
         self.analysis_paused = False
@@ -1627,15 +1664,15 @@ class ModernVarroaDetectorApp:
             command=self.start_text_verification_mode
         )
         
-        # Show confirmation
-        messagebox.showinfo("Verification Complete", "Text verification complete. Analysis resumed.")
+    # Show confirmation
+    print("INFO: Verification complete. Analysis resumed.")
     
     def open_text_verification_dialog(self, zone_index):
         """Open the text verification dialog for the clicked zone"""
         zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
         
         if not zone_mites:
-            messagebox.showinfo("No Mites", f"No mites detected in Zone {zone_index + 1}")
+            print(f"INFO: No mites detected in Zone {zone_index + 1}")
             return
         
         # Create text verification dialog
@@ -1758,6 +1795,11 @@ class ModernVarroaDetectorApp:
                                 for text_zone in zone.text_zones:
                                     if hasattr(text_zone, 'text'):
                                         text_zone.text = new_text
+                                # Also update the parent zone's zone_id so the label persists
+                                try:
+                                    zone.zone_id = new_text
+                                except Exception:
+                                    pass
                             else:
                                 # Create a text zone if none exists
                                 try:
@@ -1769,16 +1811,88 @@ class ModernVarroaDetectorApp:
                                     text_zone = TextZone(zone.x1, zone.y1, zone.x2, zone.y2)
                                     text_zone.text = new_text
                                     zone.text_zones.append(text_zone)
+                                    # Also set the parent zone label
+                                    try:
+                                        zone.zone_id = new_text
+                                    except Exception:
+                                        pass
                                 except ImportError:
                                     print("Warning: Could not create TextZone - TextZone class not available")
-                    
-                    print(f"✅ Updated text for {mite.get('mite_id')}: '{old_text}' → '{new_text}'")
         
         # Save MiteManager if changes were made and it's available
         if changes_made and hasattr(self, 'mite_manager') and self.mite_manager:
+            # Record expected updates per zone index so we can verify persistence
+            expected_zone_updates = {}
+            for mite in zone_mites:
+                if mite.get('text_verified'):
+                    zidx = mite.get('zone_id', None)
+                    if zidx is not None:
+                        expected_zone_updates[zidx] = mite.get('detected_text')
+
             try:
                 self.mite_manager.save()
                 print("✅ Saved changes to MiteManager")
+
+                # Attempt to reload and verify that the saved file contains the updates
+                persisted_ok = False
+                retries = 0
+                max_retries = 2
+                while retries <= max_retries and not persisted_ok:
+                    try:
+                        with open(self.mite_manager.save_path, 'rb') as f:
+                            loaded = pickle.load(f)
+                            self.mite_manager = loaded
+
+                        # Verify expected updates
+                        persisted_ok = True
+                        for zidx, expected_text in expected_zone_updates.items():
+                            try:
+                                if zidx >= len(self.mite_manager.zones):
+                                    persisted_ok = False
+                                    break
+                                persisted_label = getattr(self.mite_manager.zones[zidx], 'zone_id', None)
+                                if str(persisted_label) != str(expected_text):
+                                    persisted_ok = False
+                                    break
+                            except Exception:
+                                persisted_ok = False
+                                break
+
+                        if not persisted_ok:
+                            # Try to re-apply the updates to the reloaded manager and save again
+                            for zidx, expected_text in expected_zone_updates.items():
+                                if zidx < len(self.mite_manager.zones):
+                                    try:
+                                        self.mite_manager.zones[zidx].zone_id = expected_text
+                                    except Exception:
+                                        pass
+                            # save and retry
+                            try:
+                                self.mite_manager.save()
+                                print(f"Retry #{retries + 1}: re-saved MiteManager to enforce updates")
+                            except Exception as e:
+                                print(f"Retry save failed: {e}")
+
+                    except Exception as e:
+                        print(f"Warning: Could not reload MiteManager after save (attempt {retries}): {e}")
+
+                    if not persisted_ok:
+                        retries += 1
+                        time.sleep(0.1)
+
+                if persisted_ok:
+                    print("✅ Persistence verified: zone labels saved and reloaded correctly")
+                else:
+                    print("❌ Persistence verification failed: zone labels did not match after save")
+                    print("WARNING: The application could not verify that your text edits were persisted to disk. Please try saving again or restart the app to ensure changes are kept.")
+
+                # Ensure UI shows the current (reloaded) state
+                try:
+                    self.root.after(100, self.refresh_zone_display)
+                    self.root.after(100, self.update_mite_list_display)
+                except Exception:
+                    pass
+
             except Exception as e:
                 print(f"Warning: Could not save MiteManager: {e}")
                 
@@ -1787,9 +1901,9 @@ class ModernVarroaDetectorApp:
         
         # Show success message
         if changes_made:
-            messagebox.showinfo("Success", "Text verification saved successfully!")
+            print("INFO: Success - Text verification saved successfully!")
         else:
-            messagebox.showinfo("Info", "No changes were made.")
+            print("INFO: No changes were made.")
         
         dialog.destroy()
     
@@ -1989,26 +2103,26 @@ class ModernVarroaDetectorApp:
     def validate_inputs(self):
         """Validate user inputs"""
         if not self.selected_folder.get():
-            messagebox.showerror("Error", "Please select a dataset folder")
+            print("ERROR: Please select a dataset folder")
             return False
         
         if not os.path.exists(self.selected_folder.get()):
-            messagebox.showerror("Error", "Selected dataset folder does not exist")
+            print("ERROR: Selected dataset folder does not exist")
             return False
         
         name = self.analysis_name.get().strip()
         if not name:
-            messagebox.showerror("Error", "Please enter an analysis name")
+            print("ERROR: Please enter an analysis name")
             return False
         
         # Validate numeric inputs
         try:
             time_between = float(self.time_between_recordings.get())
             if time_between < 0:
-                messagebox.showerror("Error", "Time between recordings cannot be negative")
+                print("ERROR: Time between recordings cannot be negative")
                 return False
         except ValueError:
-            messagebox.showerror("Error", "Time between recordings must be a valid number")
+            print("ERROR: Time between recordings must be a valid number")
             return False
         
         return True
@@ -2020,18 +2134,12 @@ class ModernVarroaDetectorApp:
         
         # Check if text verification is active
         if self.analysis_paused and not self.recording1_pause:
-            messagebox.showwarning(
-                "Analysis Paused", 
-                "Text verification is in progress. Please finish verifying texts before starting a new analysis."
-            )
+            print("WARNING: Text verification is in progress. Please finish verifying texts before starting a new analysis.")
             return
         
         # Check if we're in recording 1 pause (should use continue instead)
         if self.recording1_pause:
-            messagebox.showwarning(
-                "Use Continue Analysis",
-                "Recording 1 is complete. Please use 'Continue Analysis' to proceed with recording 2, or start a new analysis session."
-            )
+            print("WARNING: Recording 1 is complete. Please use 'Continue Analysis' to proceed with recording 2, or start a new analysis session.")
             return
         
         # Update UI state
@@ -2087,30 +2195,30 @@ class ModernVarroaDetectorApp:
             
             if os.path.exists(mite_manager_path):
                 print(f"📁 Found MiteManager during analysis: {mite_manager_path}")
-                
-                # Load the MiteManager
-                import pickle
-                from classes.MiteManager import MiteManager
-                
-                with open(mite_manager_path, 'rb') as f:
-                    self.mite_manager = pickle.load(f)
-                
-                self.mite_manager_loaded = True
-                print(f"✅ Loaded MiteManager during analysis with {len(self.mite_manager.zones)} zones")
-                
-                # Pause analysis after recording 1 for text verification
-                self.pause_after_recording1()
-                
-                # Update zone display with new colors to reflect detected mites
-                self.root.after(100, self.refresh_zone_display)  # Small delay to ensure UI is ready
-                
-                # Update zone display if image is loaded (legacy method)
-                if hasattr(self, 'current_pil_image') and self.current_pil_image:
-                    # Refresh the image display with updated zone info
-                    if hasattr(self, 'selected_folder') and self.selected_folder.get():
-                        self.load_and_display_first_image(self.selected_folder.get())
-                
-                return
+
+                # Automatically load the saved MiteManager (no prompt) and pause for verification
+                try:
+                    with open(mite_manager_path, 'rb') as f:
+                        self.mite_manager = pickle.load(f)
+
+                    self.mite_manager_loaded = True
+                    print(f"✅ Auto-loaded MiteManager during analysis with {len(self.mite_manager.zones)} zones")
+
+                    # Pause analysis after recording 1 for text verification
+                    self.pause_after_recording1()
+
+                    # Update zone display with new colors to reflect detected mites
+                    self.root.after(100, self.refresh_zone_display)  # Small delay to ensure UI is ready
+
+                    # Update zone display if image is loaded (legacy method)
+                    if hasattr(self, 'current_pil_image') and self.current_pil_image:
+                        # Refresh the image display with updated zone info
+                        if hasattr(self, 'selected_folder') and self.selected_folder.get():
+                            self.load_and_display_first_image(self.selected_folder.get())
+
+                    return
+                except Exception as e:
+                    print(f"Error auto-loading MiteManager during analysis: {e}")
                 
         except Exception as e:
             print(f"Error loading MiteManager during analysis: {e}")
@@ -2122,27 +2230,24 @@ class ModernVarroaDetectorApp:
     def pause_after_recording1(self):
         """Pause analysis after recording 1 for text verification"""
         print("⏸️ Pausing analysis after recording 1 for text verification...")
-        
+
         # Set pause flags
         self.recording1_pause = True
         self.analysis_paused = True
-        
+
         # Stop the analysis monitoring but keep the analysis running state temporarily
         # This prevents the analysis thread from being considered "complete"
         self.analysis_running = False  # This stops the monitoring loop
-        
+
         # Unlock zones so they can be interacted with
         self.unlock_zones()
-        
+
         # Update UI to show pause state
         self.root.after(0, self.update_ui_for_recording1_pause)
-        
-        # Show user notification
-        self.root.after(100, lambda: messagebox.showinfo(
-            "Recording 1 Complete",
-            "Recording 1 analysis is complete!\n\n"
-            "You can now verify and edit zone IDs.\n"
-            "Click 'Continue Analysis' to proceed with recording 2."
+
+        # Show user notification (non-blocking)
+        self.root.after(100, lambda: print(
+            "INFO: Recording 1 analysis is complete! You can now verify and edit zone IDs. Click 'Continue Analysis' to proceed with recording 2."
         ))
     
     def simulate_recording1_pause(self):
@@ -2186,18 +2291,39 @@ class ModernVarroaDetectorApp:
         self.update_verify_button_state()
     
     def pause_for_text_verification(self, mite_manager_instance):
-        """Callback function called by main.py after recording 1 to pause for text verification"""
+        """Callback function called by main.py after recording 1 to pause for text verification.
+        Behavior: save the received manager to disk, prompt the user to load it now; if the user
+        confirms, reload from disk and set up the recording1 pause UI so edits operate on the
+        persisted stage (ensuring recording 2 will use user-updated zone IDs).
+        """
         print("⏸️ Analysis paused after recording 1 - starting text verification")
-        
+
         # Store the mite manager instance for text verification
         self.mite_manager = mite_manager_instance
-        
-        # Update progress to show pause
-        self.root.after(0, lambda: self.update_progress(60, "⏸️ Analysis paused - Please verify zone IDs"))
-        
-        # Trigger recording 1 pause setup on UI thread
+
+        # Persist the received manager immediately to ensure disk copy exists
+        try:
+            if hasattr(self.mite_manager, 'save'):
+                self.mite_manager.save()
+                print(f"✅ Saved MiteManager to disk from pause callback: {getattr(self.mite_manager, 'save_path', 'classes/mite_manager.plk')}")
+        except Exception as e:
+            print(f"Warning: could not save MiteManager from pause callback: {e}")
+
+        # Auto-reload the saved manager immediately so the UI edits operate on the persisted stage
+        try:
+            mite_manager_path = os.path.join(os.path.dirname(__file__), "classes", "mite_manager.plk")
+            if os.path.exists(mite_manager_path):
+                with open(mite_manager_path, 'rb') as f:
+                    self.mite_manager = pickle.load(f)
+                    print(f"🔁 Auto-reloaded MiteManager from disk for verification: {mite_manager_path}")
+            else:
+                print(f"⚠️ Expected saved MiteManager not found at: {mite_manager_path}")
+        except Exception as e:
+            print(f"Warning: failed to auto-reload MiteManager from disk: {e}")
+
+        # Trigger recording 1 pause setup on UI thread so edits are available
         self.root.after(0, self.setup_recording1_pause)
-        
+
         # No need to block here - the main.py will handle the waiting
         print("📱 GUI pause setup complete - text editing should now be available")
         return True
@@ -2207,6 +2333,11 @@ class ModernVarroaDetectorApp:
         # Enable recording 1 pause mode
         self.recording1_pause = True
         self.analysis_paused = True
+        # Update progress label to instruct the user
+        try:
+            self.update_progress(60, "verify read text then press continue...")
+        except Exception:
+            pass
         
         # If we have a mite manager from the pause callback, use it directly
         if hasattr(self, 'mite_manager') and self.mite_manager:
@@ -2487,14 +2618,8 @@ class ModernVarroaDetectorApp:
         if hasattr(self, 'selected_folder') and self.selected_folder.get():
             self.load_and_display_first_image(self.selected_folder.get())
         
-        # Show completion message
-        messagebox.showinfo(
-            "Success",
-            "🎉 Analysis completed successfully!\n\n"
-            "• Results are ready for download\n"
-            "• Zones are now locked\n"
-            "• Click on zones to verify detected text"
-        )
+    # Show completion message (non-blocking)
+    print("SUCCESS: Analysis completed successfully! Results are ready for download. Zones are now locked. Click on zones to verify detected text.")
     
     def lock_zones(self):
         """Lock zones to prevent modification after analysis"""
@@ -2773,9 +2898,9 @@ class ModernVarroaDetectorApp:
         # Refresh image display to show unlocked zones
         if self.selected_folder.get():
             self.load_and_display_first_image(self.selected_folder.get())
-        
-        # Show error message
-        messagebox.showerror("Analysis Failed", f"❌ {error_msg}")
+
+        # Show error message (non-blocking)
+        print(f"ERROR: Analysis Failed - {error_msg}")
     
     def stop_analysis(self):
         """Stop the current analysis"""
@@ -2796,12 +2921,12 @@ class ModernVarroaDetectorApp:
             if self.selected_folder.get():
                 self.load_and_display_first_image(self.selected_folder.get())
             
-            messagebox.showinfo("Stopped", "Analysis has been stopped")
+            print("INFO: Analysis has been stopped")
     
     def download_results_zip(self):
         """Create and download results as ZIP file, then clean up temporary folder"""
         if not self.results_path or not os.path.exists(self.results_path):
-            messagebox.showwarning("No Results", "No results folder found to download")
+            print("WARNING: No results folder found to download")
             return
         
         try:
@@ -2891,29 +3016,26 @@ class ModernVarroaDetectorApp:
                     # Get folder name for success message
                     folder_name = "analysis_results"
                     
-                    # Close progress window and show success
+                    # Close progress window and show success (non-blocking)
                     self.root.after(0, lambda: [
                         progress_window.destroy(),
                         self.download_button.configure(state="disabled", bg=self.colors['bg_tertiary']),
                         self.results_info.configure(text="📁 Results downloaded and temporary files cleaned up", fg=self.colors['text_muted']),
-                        messagebox.showinfo(
-                            "Analysis Complete! 🎉",
-                            f"✅ Analysis results successfully saved to:\n{zip_path}\n\nFile size: {self.get_file_size(zip_path)}\n\n🧹 All temporary files have been automatically cleaned up.\n\n📊 Your analysis is ready to use!"
-                        )
+                        print(f"INFO: Analysis results successfully saved to: {zip_path} (size: {self.get_file_size(zip_path)})")
                     ])
                     
                 except Exception as e:
                     error_msg = str(e)
                     self.root.after(0, lambda: [
                         progress_window.destroy(),
-                        messagebox.showerror("ZIP Error", f"Failed to create ZIP file:\n{error_msg}")
+                        print(f"ERROR: Failed to create ZIP file: {error_msg}")
                     ])
             
             # Start ZIP creation
             threading.Thread(target=create_zip, daemon=True).start()
             
         except Exception as e:
-            messagebox.showerror("Download Error", f"Failed to download results:\n{e}")
+            print(f"ERROR: Failed to download results: {e}")
     
     def safe_remove_folder(self, folder_path):
         """Safely remove a folder with retry logic for Windows permission issues"""
@@ -2972,7 +3094,7 @@ def main():
         app.run()
     except Exception as e:
         print(f"Error starting application: {e}")
-        messagebox.showerror("Startup Error", f"Failed to start application: {e}")
+    print(f"ERROR: Failed to start application: {e}")
 
 
 if __name__ == "__main__":
