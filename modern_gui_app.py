@@ -1982,7 +1982,7 @@ class ModernVarroaDetectorApp:
         # Update progress
         if hasattr(self, 'progress_label'):
             self.progress_label.configure(
-                text="🔍 Recording 1 complete - Verify texts and continue",
+                text="🔍 Verify texts and continue",
                 fg=self.colors.get('warning', 'orange')
             )
         
@@ -2183,7 +2183,7 @@ class ModernVarroaDetectorApp:
         
         if hasattr(self, 'progress_label'):
             self.progress_label.configure(
-                text="Processing recording 2...",
+                text="Processing recordings ...",
                 fg=self.colors.get('text_primary', 'black')
             )
         
@@ -2221,7 +2221,7 @@ class ModernVarroaDetectorApp:
                 raise RuntimeError(f"Could not import analysis module: {e}")
             
             # Update progress
-            self.root.after(0, lambda: self.update_progress(40, "Processing images with AI..."))
+            self.root.after(0, lambda: self.update_progress(40, "detecting mites and reading text..."))
             
             # Run the actual prediction with temporary output folder and pause callback
             predict(
