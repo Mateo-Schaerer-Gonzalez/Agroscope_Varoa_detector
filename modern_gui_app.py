@@ -190,7 +190,7 @@ class SplashScreen:
 class ModernVarroaDetectorApp:
     def __init__(self):
         self.root = tk.Tk()
-        
+
         # Initialize text verification attributes early
         self.analysis_complete_flag = False
         self.zones_locked = False
@@ -205,17 +205,23 @@ class ModernVarroaDetectorApp:
         self.analysis_paused = False  # New: Flag to pause analysis during verification
         self.recording1_pause = False  # New: Flag for automatic pause after recording 1
         self.continue_analysis_params = None  # New: Store analysis parameters for continuation
-        
+
         # MiteManager integration
         self.mite_manager = None  # Will store the MiteManager instance after analysis
-        self.mite_manager = None  # Will store the MiteManager instance from analysis
-        
+        # Snapshot of original zone coordinates so we can restore them after an analysis
+        self._original_zone_coordinates = None
+        # If True, the app will restore original zone coordinates and remove the
+        # on-disk mite_manager stage automatically when analysis completes.
+        # Default is False to avoid surprising behavior; call clear_saved_stage()
+        # or set this flag to True if you want automatic cleanup on completion.
+        self.restore_zones_on_completion = False
+
         # Hide main window initially
         self.root.withdraw()
-        
+
         # Show splash screen
         self.splash = SplashScreen(duration=3000)
-        
+
         # Initialize main window after splash
         self.root.after(3200, self.initialize_main_window)
         
@@ -2618,6 +2624,15 @@ class ModernVarroaDetectorApp:
         if hasattr(self, 'selected_folder') and self.selected_folder.get():
             self.load_and_display_first_image(self.selected_folder.get())
         
+        # Optional cleanup: restore original zone coordinates and remove saved
+        # MiteManager stage if the user opted into automatic cleanup.
+        if getattr(self, 'restore_zones_on_completion', False):
+            print("INFO: restore_zones_on_completion enabled - performing cleanup of saved stage and zones")
+            try:
+                self.clear_saved_stage(delete_pickle=True, restore_coords=True)
+            except Exception as cleanup_error:
+                print(f"WARNING: cleanup during analysis_completed failed: {cleanup_error}")
+        
     # Show completion message (non-blocking)
     print("SUCCESS: Analysis completed successfully! Results are ready for download. Zones are now locked. Click on zones to verify detected text.")
     
@@ -2732,6 +2747,16 @@ class ModernVarroaDetectorApp:
                 
                 # Refresh zone display to show updated colors based on detected mites
                 self.refresh_zone_display()
+
+                # If zone coordinates were populated from the MiteManager, capture an
+                # immutable snapshot so we can restore them later when the user
+                # wants to start a fresh analysis.
+                if getattr(self, 'zone_coordinates', None) and self._original_zone_coordinates is None:
+                    try:
+                        self._original_zone_coordinates = list(self.zone_coordinates)
+                        print(f"Saved original zone coordinates snapshot ({len(self._original_zone_coordinates)} zones)")
+                    except Exception:
+                        self._original_zone_coordinates = None
                 
                 return
                 
@@ -3073,6 +3098,35 @@ class ModernVarroaDetectorApp:
                 print(f"Unexpected error removing folder {folder_path}: {e}")
                 break
 
+    def clear_saved_stage(self, delete_pickle=False, restore_coords=False):
+        """Clear saved mite manager stage and optionally restore zone coordinates.
+
+        delete_pickle: if True, attempt to remove classes/mite_manager.plk
+        restore_coords: if True, restore zone_coordinates from the saved snapshot
+        """
+        # Restore zone coordinates if requested and snapshot exists
+        if restore_coords and self._original_zone_coordinates is not None:
+            try:
+                self.zone_coordinates = list(self._original_zone_coordinates)
+                print(f"INFO: Restored original zone coordinates ({len(self.zone_coordinates)} zones)")
+            except Exception as e:
+                print(f"WARNING: Failed to restore original zone coordinates: {e}")
+
+        # Delete the pickled MiteManager if requested
+        if delete_pickle:
+            try:
+                pickle_path = os.path.join(os.path.dirname(__file__), 'classes', 'mite_manager.plk')
+                if os.path.exists(pickle_path):
+                    try:
+                        os.remove(pickle_path)
+                        print(f"INFO: Removed saved MiteManager: {pickle_path}")
+                    except Exception as e:
+                        print(f"WARNING: Could not remove {pickle_path}: {e}")
+                else:
+                    print(f"INFO: No saved MiteManager found at {pickle_path}")
+            except Exception as e:
+                print(f"WARNING: Unexpected error trying to delete saved stage: {e}")
+
     def get_file_size(self, file_path):
         """Get human readable file size"""
         size = os.path.getsize(file_path)
@@ -3093,8 +3147,7 @@ def main():
         app = ModernVarroaDetectorApp()
         app.run()
     except Exception as e:
-        print(f"Error starting application: {e}")
-    print(f"ERROR: Failed to start application: {e}")
+        print(f"ERROR: Failed to start application: {e}")
 
 
 if __name__ == "__main__":
