@@ -1228,71 +1228,7 @@ class ModernVarroaDetectorApp:
         )
         self.hover_zone_info.pack(pady=(0, 10))
         
-        # Mite detection results
-        results_frame = tk.Frame(right_frame, bg=self.colors['surface'], relief='flat', bd=1)
-        results_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        
-        tk.Label(
-            results_frame,
-            text="Detected Mites:",
-            font=self.fonts['small'],
-            bg=self.colors['surface'],
-            fg=self.colors['text_secondary']
-        ).pack(pady=(10, 5))
-        
-        # Scrollable mite list
-        mite_scroll_frame = tk.Frame(results_frame, bg=self.colors['surface'])
-        mite_scroll_frame.pack(fill="both", expand=True, padx=5)
-        
-        self.mite_listbox = tk.Listbox(
-            mite_scroll_frame,
-            bg=self.colors['bg_primary'],
-            fg=self.colors['text_primary'],
-            selectbackground=self.colors['accent'],
-            selectforeground='white',
-            font=self.fonts['small'],
-            height=8
-        )
-        self.mite_listbox.pack(fill="both", expand=True, pady=(0, 5))
-        self.mite_listbox.insert(0, "No analysis results yet")
-        
-        # Text verification controls
-        verification_frame = tk.Frame(right_frame, bg=self.colors['bg_tertiary'])
-        verification_frame.pack(fill="x", padx=10, pady=(0, 10))
-        
-        tk.Label(
-            verification_frame,
-            text="Text Verification:",
-            font=self.fonts['small'],
-            bg=self.colors['bg_tertiary'],
-            fg=self.colors['text_secondary']
-        ).pack()
-        
-        self.verify_button = tk.Button(
-            verification_frame,
-            text="🔍 Click Zone to Edit Text",
-            font=self.fonts['small'],
-            bg=self.colors['text_muted'],
-            fg='white',
-            state="disabled",
-            relief='flat',
-            pady=5
-        )
-        self.verify_button.pack(fill="x", pady=(5, 2))
-        
-        # Verify All Texts button
-        self.verify_all_button = tk.Button(
-            verification_frame,
-            text="✅ Verify All Texts",
-            font=self.fonts['small'],
-            bg=self.colors['warning'],
-            fg='white',
-            state="disabled",
-            relief='flat',
-            pady=5,
-            command=self.start_text_verification_mode
-        )
-        self.verify_all_button.pack(fill="x", pady=(2, 0))
+    # (Removed) Mite results and text verification UI blocks
     
     def on_image_hover(self, event):
         """Handle mouse hover over the image canvas"""
@@ -1614,35 +1550,34 @@ class ModernVarroaDetectorApp:
     
     def update_verify_button_state(self):
         """Update the state of verification buttons based on current conditions"""
-        if (self.analysis_complete_flag or self.recording1_pause) and self.zone_coordinates:
-            # Enable individual zone editing
-            self.verify_button.configure(
-                text="🔍 Click Zone to Edit Text",
-                bg=self.colors['accent'],  # Use 'accent' instead of 'primary'
-                state="normal"
-            )
-            
-            # Enable verify all button
-            self.verify_all_button.configure(
-                state="normal",
-                bg=self.colors['warning'] if not self.analysis_paused else self.colors['success']
-            )
-            
-            if self.analysis_paused and not self.recording1_pause:
-                self.verify_all_button.configure(text="✅ Texts Verified - Resume")
-            else:
-                self.verify_all_button.configure(text="✅ Verify All Texts")
-        else:
-            # Disable buttons when analysis not complete or recording 1 not paused
-            self.verify_button.configure(
-                text="🔍 Click Zone to Edit Text",
-                bg=self.colors['text_muted'],
-                state="disabled"
-            )
-            self.verify_all_button.configure(
-                state="disabled",
-                bg=self.colors['text_muted']
-            )
+        # Text verification UI removed; ensure any external callers won't fail
+        # If widgets exist, update them safely; otherwise do nothing
+        if hasattr(self, 'verify_button') or hasattr(self, 'verify_all_button'):
+            try:
+                if (self.analysis_complete_flag or self.recording1_pause) and self.zone_coordinates:
+                    if hasattr(self, 'verify_button'):
+                        try:
+                            self.verify_button.configure(text="🔍 Click Zone to Edit Text", bg=self.colors['accent'])
+                        except Exception:
+                            pass
+                    if hasattr(self, 'verify_all_button'):
+                        try:
+                            self.verify_all_button.configure(bg=self.colors['warning'] if not self.analysis_paused else self.colors['success'])
+                        except Exception:
+                            pass
+                else:
+                    if hasattr(self, 'verify_button'):
+                        try:
+                            self.verify_button.configure(text="🔍 Click Zone to Edit Text", bg=self.colors['text_muted'])
+                        except Exception:
+                            pass
+                    if hasattr(self, 'verify_all_button'):
+                        try:
+                            self.verify_all_button.configure(bg=self.colors['text_muted'])
+                        except Exception:
+                            pass
+            except Exception:
+                pass
     
     def start_text_verification_mode(self):
         """Start or end text verification mode"""
@@ -1656,17 +1591,8 @@ class ModernVarroaDetectorApp:
             # Start verification mode - pause analysis
             self.analysis_paused = True
             self.text_verification_active = True
-            
-            # Update button to show "Resume" state
-            self.verify_all_button.configure(
-                text="✅ Texts Verified - Resume",
-                bg=self.colors['success'],
-                command=self.end_text_verification_mode
-            )
-            
-            # Show instruction message
-            print("INFO: Analysis paused for text verification. Click on zones to edit their IDs. Click 'Texts Verified - Resume' when done.")
-            
+            # No UI action required (UI removed)
+            print("INFO: Analysis paused for text verification (UI removed).")
         else:
             # End verification mode
             self.end_text_verification_mode()
@@ -1686,255 +1612,12 @@ class ModernVarroaDetectorApp:
         self.selected_zone = None
         self.update_zone_info_display(None)
         
-        # Update button back to verification state
-        self.verify_all_button.configure(
-            text="✅ Verify All Texts",
-            bg=self.colors['warning'],
-            command=self.start_text_verification_mode
-        )
+    # No UI updates required (verification UI removed)
         
     # Show confirmation
     print("INFO: Verification complete. Analysis resumed.")
     
-    def open_text_verification_dialog(self, zone_index):
-        """Open the text verification dialog for the clicked zone"""
-        zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
-        
-        if not zone_mites:
-            print(f"INFO: No mites detected in Zone {zone_index + 1}")
-            return
-        
-        # Create text verification dialog
-        dialog = tk.Toplevel(self.root)
-        dialog.title(f"🔍 Text Verification - Zone {zone_index + 1}")
-        dialog.geometry("500x400")
-        dialog.configure(bg=self.colors['bg_primary'])
-        dialog.resizable(True, True)
-        
-        # Center dialog
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Dialog content
-        main_frame = tk.Frame(dialog, bg=self.colors['bg_primary'])
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        
-        # Title
-        title_label = tk.Label(
-            main_frame,
-            text=f"🔍 Verify Detected Text - Zone {zone_index + 1}",
-            font=self.fonts['heading'],
-            bg=self.colors['bg_primary'],
-            fg=self.colors['text_primary']
-        )
-        title_label.pack(pady=(0, 15))
-        
-        # Mite list with text editing
-        for i, mite in enumerate(zone_mites):
-            mite_frame = tk.Frame(main_frame, bg=self.colors['surface'], relief='flat', bd=1)
-            mite_frame.pack(fill="x", pady=(0, 10))
-            
-            # Mite info
-            mite_info_label = tk.Label(
-                mite_frame,
-                text=f"Mite {mite.get('mite_id', f'mite_{i+1}')} - Status: {mite.get('status', 'unknown')}",
-                font=self.fonts['body'],
-                bg=self.colors['surface'],
-                fg=self.colors['text_primary']
-            )
-            mite_info_label.pack(anchor="w", padx=10, pady=(10, 5))
-            
-            # Text entry
-            text_label = tk.Label(
-                mite_frame,
-                text="Detected/Edited Text:",
-                font=self.fonts['small'],
-                bg=self.colors['surface'],
-                fg=self.colors['text_secondary']
-            )
-            text_label.pack(anchor="w", padx=10)
-            
-            text_entry = tk.Entry(
-                mite_frame,
-                font=self.fonts['body'],
-                bg=self.colors['bg_primary'],
-                relief='flat',
-                bd=1
-            )
-            current_text = mite.get('detected_text', f"Text for mite {mite.get('mite_id', i+1)}")
-            text_entry.insert(0, current_text)
-            text_entry.pack(fill="x", padx=10, pady=(2, 10))
-            
-            # Store reference for saving
-            mite['text_entry'] = text_entry
-        
-        # Buttons frame
-        button_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
-        button_frame.pack(fill="x", pady=(15, 0))
-        
-        # Save button
-        save_button = tk.Button(
-            button_frame,
-            text="💾 Save Changes",
-            font=self.fonts['body'],
-            bg=self.colors['success'],
-            fg='white',
-            relief='flat',
-            pady=10,
-            command=lambda: self.save_text_verification(zone_mites, dialog)
-        )
-        save_button.pack(side="left", padx=(0, 10))
-        
-        # Cancel button
-        cancel_button = tk.Button(
-            button_frame,
-            text="✖ Cancel",
-            font=self.fonts['body'],
-            bg=self.colors['error'],
-            fg='white',
-            relief='flat',
-            pady=10,
-            command=dialog.destroy
-        )
-        cancel_button.pack(side="left")
-    
-    def save_text_verification(self, zone_mites, dialog):
-        """Save the verified text changes"""
-        changes_made = False
-        
-        for mite in zone_mites:
-            if 'text_entry' in mite:
-                new_text = mite['text_entry'].get()
-                old_text = mite.get('detected_text', '')
-                
-                if new_text != old_text:
-                    mite['verified_text'] = new_text
-                    mite['detected_text'] = new_text  # Update the display text
-                    mite['text_verified'] = True
-                    changes_made = True
-                    
-                    # If MiteManager is available, update the text zones
-                    if hasattr(self, 'mite_manager') and self.mite_manager:
-                        zone_id = mite.get('zone_id', 0)
-                        if zone_id < len(self.mite_manager.zones):
-                            zone = self.mite_manager.zones[zone_id]
-                            
-                            # Update text zones if they exist
-                            if hasattr(zone, 'text_zones') and zone.text_zones:
-                                for text_zone in zone.text_zones:
-                                    if hasattr(text_zone, 'text'):
-                                        text_zone.text = new_text
-                                # Also update the parent zone's zone_id so the label persists
-                                try:
-                                    zone.zone_id = new_text
-                                except Exception:
-                                    pass
-                            else:
-                                # Create a text zone if none exists
-                                try:
-                                    from classes.Rect import TextZone
-                                    if not hasattr(zone, 'text_zones'):
-                                        zone.text_zones = []
-                                    
-                                    # Create a basic text zone with zone coordinates
-                                    text_zone = TextZone(zone.x1, zone.y1, zone.x2, zone.y2)
-                                    text_zone.text = new_text
-                                    zone.text_zones.append(text_zone)
-                                    # Also set the parent zone label
-                                    try:
-                                        zone.zone_id = new_text
-                                    except Exception:
-                                        pass
-                                except ImportError:
-                                    print("Warning: Could not create TextZone - TextZone class not available")
-        
-        # Save MiteManager if changes were made and it's available
-        if changes_made and hasattr(self, 'mite_manager') and self.mite_manager:
-            # Record expected updates per zone index so we can verify persistence
-            expected_zone_updates = {}
-            for mite in zone_mites:
-                if mite.get('text_verified'):
-                    zidx = mite.get('zone_id', None)
-                    if zidx is not None:
-                        expected_zone_updates[zidx] = mite.get('detected_text')
-
-            try:
-                self.mite_manager.save()
-                print("✅ Saved changes to MiteManager")
-
-                # Attempt to reload and verify that the saved file contains the updates
-                persisted_ok = False
-                retries = 0
-                max_retries = 2
-                while retries <= max_retries and not persisted_ok:
-                    try:
-                        with open(self.mite_manager.save_path, 'rb') as f:
-                            loaded = pickle.load(f)
-                            self.mite_manager = loaded
-
-                        # Verify expected updates
-                        persisted_ok = True
-                        for zidx, expected_text in expected_zone_updates.items():
-                            try:
-                                if zidx >= len(self.mite_manager.zones):
-                                    persisted_ok = False
-                                    break
-                                persisted_label = getattr(self.mite_manager.zones[zidx], 'zone_id', None)
-                                if str(persisted_label) != str(expected_text):
-                                    persisted_ok = False
-                                    break
-                            except Exception:
-                                persisted_ok = False
-                                break
-
-                        if not persisted_ok:
-                            # Try to re-apply the updates to the reloaded manager and save again
-                            for zidx, expected_text in expected_zone_updates.items():
-                                if zidx < len(self.mite_manager.zones):
-                                    try:
-                                        self.mite_manager.zones[zidx].zone_id = expected_text
-                                    except Exception:
-                                        pass
-                            # save and retry
-                            try:
-                                self.mite_manager.save()
-                                print(f"Retry #{retries + 1}: re-saved MiteManager to enforce updates")
-                            except Exception as e:
-                                print(f"Retry save failed: {e}")
-
-                    except Exception as e:
-                        print(f"Warning: Could not reload MiteManager after save (attempt {retries}): {e}")
-
-                    if not persisted_ok:
-                        retries += 1
-                        time.sleep(0.1)
-
-                if persisted_ok:
-                    print("✅ Persistence verified: zone labels saved and reloaded correctly")
-                else:
-                    print("❌ Persistence verification failed: zone labels did not match after save")
-                    print("WARNING: The application could not verify that your text edits were persisted to disk. Please try saving again or restart the app to ensure changes are kept.")
-
-                # Ensure UI shows the current (reloaded) state
-                try:
-                    self.root.after(100, self.refresh_zone_display)
-                    self.root.after(100, self.update_mite_list_display)
-                except Exception:
-                    pass
-
-            except Exception as e:
-                print(f"Warning: Could not save MiteManager: {e}")
-                
-        # Update the display
-        self.update_mite_list_display()
-        
-        # Show success message
-        if changes_made:
-            print("INFO: Success - Text verification saved successfully!")
-        else:
-            print("INFO: No changes were made.")
-        
-        dialog.destroy()
+    # Text verification dialog and save methods removed
     
     def update_mite_list_display(self):
         """Update the mite list display in the zone info panel"""
