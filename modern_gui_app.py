@@ -805,7 +805,7 @@ class ModernVarroaDetectorApp:
             if hasattr(mite_zone, 'zone_id') and mite_zone.zone_id:
                 zone_text = str(mite_zone.zone_id)
             else:
-                zone_text = f"Zone {zone_idx + 1}"
+                zone_text = f"zone not loaded"
             
             # Determine colors based on selection state and mite presence
             if self.selected_zone == zone_idx:
@@ -1424,7 +1424,7 @@ class ModernVarroaDetectorApp:
             # Get zone info from mite_zones data
             zone_mites = [mite for mite in self.mite_zones if mite.get('zone_id') == zone_index]
             mite_count = len(zone_mites)
-            zone_label = f"Zone {zone_index + 1}"
+            zone_label = f"Zone not loaded"
             
             # Try to get zone label from first mite in the zone
             if zone_mites:
