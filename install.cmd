@@ -85,7 +85,7 @@ if not exist "%DESKTOP%" (
 )
 
 set "SHORTCUT=%DESKTOP%\Varroa Detector.lnk"
-set "ICON_PATH=%SCRIPT_DIR%app\icons\app_icon.ico"
+set "ICON_PATH=%SCRIPT_DIR%app\icons\honeycomb_logo_transparent.ico"
 echo [INFO] Creating desktop shortcut: %SHORTCUT%
 
 REM ---- Create .lnk via temporary VBScript to avoid quoting pitfalls ----
@@ -103,6 +103,39 @@ set "_VBS=%TEMP%\mk_varroa_link_%RANDOM%.vbs"
 >>"%_VBS%" echo End If
 >>"%_VBS%" echo oLnk.Save
 
+REM Try to resolve pythonw.exe in the conda env to avoid console windows
+set "PYW_EXE="
+for %%A in ("%CONDA_BAT%") do set "CB_DIR=%%~dpA"
+set "cand1=%CB_DIR%..\..\envs\%ENV_NAME%\pythonw.exe"
+set "cand2=%CB_DIR%..\envs\%ENV_NAME%\pythonw.exe"
+if exist "%cand1%" set "PYW_EXE=%cand1%"
+if not defined PYW_EXE if exist "%cand2%" set "PYW_EXE=%cand2%"
+if not defined PYW_EXE (
+  for %%R in ("%USERPROFILE%\miniforge3" "%USERPROFILE%\miniconda3" "%USERPROFILE%\anaconda3" "%ProgramData%\miniconda3" "%ProgramData%\miniforge3") do (
+    if exist "%%~R\envs\%ENV_NAME%\pythonw.exe" (
+      set "PYW_EXE=%%~R\envs\%ENV_NAME%\pythonw.exe"
+      goto :pyw_found
+    )
+  )
+)
+:pyw_found
+
+> "%_VBS%" echo Set fso = CreateObject("Scripting.FileSystemObject")
+>>"%_VBS%" echo Set oWS = CreateObject("WScript.Shell")
+>>"%_VBS%" echo sLink = "%SHORTCUT%"
+>>"%_VBS%" echo Set oLnk = oWS.CreateShortcut(sLink)
+>>"%_VBS%" echo If Len("%PYW_EXE%") ^> 0 And fso.FileExists("%PYW_EXE%") Then
+>>"%_VBS%" echo   oLnk.TargetPath = "%PYW_EXE%"
+>>"%_VBS%" echo   oLnk.Arguments = """%APP_SCRIPT%"""
+>>"%_VBS%" echo Else
+>>"%_VBS%" echo   oLnk.TargetPath = "%CONDA_BAT%"
+>>"%_VBS%" echo   oLnk.Arguments = "run -n %ENV_NAME% pythonw ""%APP_SCRIPT%"""
+>>"%_VBS%" echo End If
+>>"%_VBS%" echo oLnk.WorkingDirectory = "%SCRIPT_DIR%"
+>>"%_VBS%" echo oLnk.WindowStyle = 7
+>>"%_VBS%" echo oLnk.Description = "Launch Varroa Detector"
+>>"%_VBS%" echo If fso.FileExists("%ICON_PATH%") Then oLnk.IconLocation = "%ICON_PATH%"
+>>"%_VBS%" echo oLnk.Save
 cscript //nologo "%_VBS%"
 if errorlevel 1 goto :fail
 del /q "%_VBS%" >nul 2>&1

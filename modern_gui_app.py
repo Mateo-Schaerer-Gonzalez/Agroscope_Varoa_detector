@@ -217,6 +217,26 @@ class ModernVarroaDetectorApp:
         # Main Tk root
         self.root = tk.Tk()
 
+        # Set window icon (taskbar + title bar) to app icon when possible
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), 'app', 'icons', 'app_icon.ico')
+            if not os.path.exists(icon_path):
+                # fallbacks
+                icon_path = os.path.join(os.path.dirname(__file__), 'app', 'icons', 'honeycomb_logo_transparent.ico')
+            if os.path.exists(icon_path):
+                try:
+                    # Windows .ico preferred
+                    self.root.iconbitmap(icon_path)
+                except Exception:
+                    # Fallback to iconphoto if .ico fails
+                    try:
+                        img = tk.PhotoImage(file=icon_path)
+                        self.root.iconphoto(True, img)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         # Initialize text verification attributes early
         self.analysis_complete_flag = False
         self.zones_locked = False
