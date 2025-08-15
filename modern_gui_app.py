@@ -189,6 +189,7 @@ class SplashScreen:
 
 class ModernVarroaDetectorApp:
     def __init__(self):
+        # Main Tk root
         self.root = tk.Tk()
 
         # Initialize text verification attributes early
@@ -196,33 +197,25 @@ class ModernVarroaDetectorApp:
         self.zones_locked = False
         self.mite_zones = []
         self.current_hover_zone = None
-        self.selected_zone = None  # New: Currently selected zone for persistent display
+        self.selected_zone = None  # Currently selected zone for persistent display
         self.zone_coordinates = []
         self.canvas_scale = 1.0
         self.canvas_offset_x = 0
         self.canvas_offset_y = 0
-        self.text_verification_active = False  # New: Flag for verification mode
-        self.analysis_paused = False  # New: Flag to pause analysis during verification
-        self.recording1_pause = False  # New: Flag for automatic pause after recording 1
-        self.continue_analysis_params = None  # New: Store analysis parameters for continuation
+        self.text_verification_active = False
+        self.analysis_paused = False
+        self.recording1_pause = False
+        self.continue_analysis_params = None
 
-        # MiteManager integration
-        self.mite_manager = None  # Will store the MiteManager instance after analysis
-        # Snapshot of original zone coordinates so we can restore them after an analysis
+        # MiteManager integration and restoration settings
+        self.mite_manager = None
         self._original_zone_coordinates = None
-        # If True, the app will restore original zone coordinates and remove the
-        # on-disk mite_manager stage automatically when analysis completes.
-        # Default is False to avoid surprising behavior; call clear_saved_stage()
-        # or set this flag to True if you want automatic cleanup on completion.
-        self.restore_zones_on_completion = False
+        # If True, restore original zone coordinates and remove saved MiteManager on completion
+        self.restore_zones_on_completion = True
 
-        # Hide main window initially
+        # Hide main window initially and show splash
         self.root.withdraw()
-
-        # Show splash screen
         self.splash = SplashScreen(duration=3000)
-
-        # Initialize main window after splash
         self.root.after(3200, self.initialize_main_window)
         
     def initialize_main_window(self):
@@ -667,8 +660,18 @@ class ModernVarroaDetectorApp:
     
     def on_zone_selection_change(self, *args):
         """Handle changes to zone selection - update image overlay"""
-        if self.selected_folder.get():
-            self.load_and_display_first_image(self.selected_folder.get())
+        # Refresh the zone overlay whenever the plates_per_recording selection changes.
+        # If a dataset folder is selected, reload the first image from that folder so
+        # the overlay matches the chosen coordinate file. Otherwise just refresh the
+        # current image if available.
+        try:
+            if hasattr(self, 'selected_folder') and self.selected_folder.get():
+                self.load_and_display_first_image(self.selected_folder.get())
+            else:
+                # Refresh the currently displayed image (if any)
+                self.refresh_zone_display()
+        except Exception as e:
+            print(f"Warning: Failed to update overlay after zone selection change: {e}")
     
     def refresh_zone_display(self):
         """Refresh the zone display to reflect updated MiteManager data"""
@@ -716,6 +719,14 @@ class ModernVarroaDetectorApp:
             image_with_zones = self.apply_zone_overlay(image_rgb)
             
             # Convert to PIL and display
+            try:
+                if self._original_zone_coordinates is None and self.zone_coordinates:
+                    # Keep a shallow copy of coordinates so we can restore them later
+                    self._original_zone_coordinates = list(self.zone_coordinates)
+                    print(f"INFO: Captured original coordinate-file zone snapshot ({len(self._original_zone_coordinates)} zones)")
+            except Exception:
+                pass
+
             self.display_image(image_with_zones)
             
         except Exception as e:
@@ -748,11 +759,23 @@ class ModernVarroaDetectorApp:
     def apply_zone_overlay(self, image):
         """Apply zone bounding boxes overlay to the image"""
         try:
-            # Try to use MiteManager data first, fall back to coordinate files
+            # Decide which overlay to use:
+            # - Use MiteManager overlay when zones are locked or during text verification/pause
+            #   so detected colors and annotations are visible during verification.
+            # - Prefer coordinate-file overlay when zones are unlocked so the user can
+            #   change plates-per-recording (1/2) and see the zoneing reset.
+            use_mite_manager_overlay = False
             if self.mite_manager and hasattr(self.mite_manager, 'zones'):
+                # Only use the MiteManager overlay when zones are locked
+                # (analysis running / during verification pause). Otherwise prefer
+                # coordinate-file overlay so the plates-per-recording selection
+                # can be changed and colors reset.
+                if self.zones_locked or self.recording1_pause:
+                    use_mite_manager_overlay = True
+
+            if use_mite_manager_overlay:
                 return self.apply_mite_manager_overlay(image)
-            else:
-                return self.apply_coordinate_file_overlay(image)
+            return self.apply_coordinate_file_overlay(image)
                 
         except Exception as e:
             print(f"Error applying zone overlay: {e}")
@@ -3104,15 +3127,7 @@ class ModernVarroaDetectorApp:
         delete_pickle: if True, attempt to remove classes/mite_manager.plk
         restore_coords: if True, restore zone_coordinates from the saved snapshot
         """
-        # Restore zone coordinates if requested and snapshot exists
-        if restore_coords and self._original_zone_coordinates is not None:
-            try:
-                self.zone_coordinates = list(self._original_zone_coordinates)
-                print(f"INFO: Restored original zone coordinates ({len(self.zone_coordinates)} zones)")
-            except Exception as e:
-                print(f"WARNING: Failed to restore original zone coordinates: {e}")
-
-        # Delete the pickled MiteManager if requested
+        # 1) Delete the pickled MiteManager if requested
         if delete_pickle:
             try:
                 pickle_path = os.path.join(os.path.dirname(__file__), 'classes', 'mite_manager.plk')
@@ -3126,6 +3141,45 @@ class ModernVarroaDetectorApp:
                     print(f"INFO: No saved MiteManager found at {pickle_path}")
             except Exception as e:
                 print(f"WARNING: Unexpected error trying to delete saved stage: {e}")
+
+        # 2) Clear in-memory analysis-derived state to avoid stale overlays
+        try:
+            self.mite_manager = None
+            self.mite_zones = []
+            self.selected_zone = None
+            self.current_hover_zone = None
+            self.analysis_complete_flag = False
+            self.analysis_paused = False
+            self.recording1_pause = False
+            print("✅ Cleared in-memory MiteManager and analysis state")
+        except Exception as e:
+            print(f"Warning: could not clear in-memory state: {e}")
+
+        # 3) Restore coordinates if requested and snapshot exists
+        if restore_coords and getattr(self, '_original_zone_coordinates', None) is not None:
+            try:
+                self.zone_coordinates = list(self._original_zone_coordinates)
+                print(f"INFO: Restored original zone coordinates ({len(self.zone_coordinates)} zones)")
+            except Exception as e:
+                print(f"WARNING: Failed to restore original zone coordinates: {e}")
+
+        # 4) Force UI to reload first image / reapply coordinate overlay to reflect cleared state
+        try:
+            if hasattr(self, 'selected_folder') and self.selected_folder.get():
+                self.load_and_display_first_image(self.selected_folder.get())
+            else:
+                self.refresh_zone_display()
+
+            # Ensure UI elements reflect unlocked/clean state
+            try:
+                self.unlock_zones()
+                self.update_verify_button_state()
+            except Exception:
+                pass
+
+            print("🔄 UI refreshed after clearing saved stage")
+        except Exception as e:
+            print(f"Warning: could not refresh UI after clearing stage: {e}")
 
     def get_file_size(self, file_path):
         """Get human readable file size"""
