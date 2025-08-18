@@ -1,5 +1,5 @@
 """
-Test script to verify immediate text editing after recording 1 pause
+Pytest: verify immediate text editing after recording 1 pause (headless mock).
 """
 
 import sys
@@ -11,16 +11,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def test_immediate_text_editing():
-    """Test that text editing is available immediately after recording 1 pause"""
-    print("Testing immediate text editing availability...")
-    
-    try:
-        from main import AnalysisState, get_analysis_state
-        from modern_gui_app import ModernVarroaDetectorApp
-        print("✅ Successfully imported required components")
-    except ImportError as e:
-        print(f"❌ Failed to import components: {e}")
-        return False
+    # Import anything needed that validates availability
+    from main import get_analysis_state  # noqa: F401
     
     # Create a mock MiteManager with zones
     class MockZone:
@@ -137,20 +129,7 @@ def test_immediate_text_editing():
     gui = MockGUI()
     mock_mite_manager = MockMiteManager()
     
-    print("\n1. Initial state check:")
-    print(f"   - Zones locked: {gui.zones_locked}")
-    print(f"   - Recording1 pause: {gui.recording1_pause}")
-    print(f"   - Zone coordinates: {len(gui.zone_coordinates)}")
-    print(f"   - Mite zones: {len(gui.mite_zones)}")
-    
-    print("\n2. Triggering analysis pause...")
     gui.pause_for_text_verification(mock_mite_manager)
-    
-    print("\n3. Post-pause state check:")
-    print(f"   - Zones locked: {gui.zones_locked}")
-    print(f"   - Recording1 pause: {gui.recording1_pause}")
-    print(f"   - Zone coordinates: {len(gui.zone_coordinates)}")
-    print(f"   - Mite zones: {len(gui.mite_zones)}")
     
     # Verify that text editing should be available
     text_editing_available = (
@@ -160,28 +139,8 @@ def test_immediate_text_editing():
         len(gui.mite_zones) > 0
     )
     
-    print(f"\n4. Text editing availability: {'✅ AVAILABLE' if text_editing_available else '❌ NOT AVAILABLE'}")
-    
-    if text_editing_available:
-        print("   - Zones are unlocked ✓")
-        print("   - Recording1 pause is active ✓") 
-        print("   - Zone coordinates are loaded ✓")
-        print("   - Mite zones are loaded ✓")
-        
-        # Test that zone data is correctly populated
-        for i, zone in enumerate(gui.mite_zones):
-            print(f"   - Zone {i+1}: {zone['mite_count']} mites, coords ({zone['x1']},{zone['y1']}) to ({zone['x2']},{zone['y2']})")
-    
-    return text_editing_available
-
-def main():
-    """Main test function"""
-    print("=== Testing Immediate Text Editing After Recording 1 ===\n")
-    
-    if test_immediate_text_editing():
-        print("\n✅ SUCCESS: Text editing is immediately available after recording 1 pause!")
-    else:
-        print("\n❌ FAILED: Text editing is not available after recording 1 pause")
-
-if __name__ == "__main__":
-    main()
+    # Assertions for availability
+    assert not gui.zones_locked
+    assert gui.recording1_pause
+    assert len(gui.zone_coordinates) > 0
+    assert len(gui.mite_zones) > 0
