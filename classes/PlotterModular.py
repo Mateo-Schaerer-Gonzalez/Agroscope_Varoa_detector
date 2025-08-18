@@ -32,9 +32,10 @@ class PlotterModular:
         self.plot_generator = PlotGenerator(stage.img_size)
         self.excel_generator = ExcelGenerator()
         self.pdf_generator = PDFGenerator()
-        
-        # Set time between recordings
-        self.time_between_recording = self.path_handler.get_time_between_recordings(time_between_recordings)
+            
+        # Set time between recordings directly from the provided UI value (in minutes)
+        # Deprecated legacy file fallback: always honor the passed-in value
+        self.time_between_recording = float(time_between_recordings)
     
     def save_frame0_detection(self, image, thickness=2):
         """Save the first frame with detection overlays."""

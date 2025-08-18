@@ -85,7 +85,7 @@ def _create_reanalysis_directory(results_base):
 
 
 def _process_single_recording(detector, frames, num_per_plate, name, ground_truth, 
-                            results_folder, discobox_run, recording_number):
+                            results_folder, discobox_run, recording_number, time_between_rec=1):
     """Process a single recording and generate its plots and data."""
     # Guard clause: Check if frames exist (frames should be a single numpy stack here)
     if frames is None or len(frames) == 0:
@@ -111,7 +111,8 @@ def _process_single_recording(detector, frames, num_per_plate, name, ground_trut
     plotter = Plotter(
         stage=stage,
         output_folder=results_folder,
-        discobox_run=discobox_run
+        discobox_run=discobox_run,
+        time_between_recordings=time_between_rec
     )
     
     plotter.save_frame0_detection(frames[0], thickness=2)
@@ -165,7 +166,7 @@ def _generate_summary_reports(plotter, stage):
 
 
 def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recording, 
-                       discobox_run, name, ground_truth, pause_callback=None, pause_after_recording1=False):
+                       discobox_run, name, ground_truth, pause_callback=None, pause_after_recording1=False, time_between_rec=1):
     """Reanalyze recordings and generate comprehensive reports."""
     # Guard clauses - frames_by_recording is a list of numpy stacks
     if not frames_by_recording or len(frames_by_recording) == 0:
@@ -219,7 +220,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
         
         plotter, stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
-            results_folder, discobox_run, recording_number
+            results_folder, discobox_run, recording_number, time_between_rec=time_between_rec
         )
     
     # Generate summary reports if we processed any recordings
@@ -330,6 +331,7 @@ def _validate_predict_inputs(folder_path, name, num_per_plate):
 def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, 
            num_recordings=2, count=2, time_between_rec=1, output_folder=None, 
            pause_callback=None):
+    print("GOT TIME BETWEEN REC:", time_between_rec)
     """Main prediction function that orchestrates the analysis process."""
     # Guard clauses
     _validate_predict_inputs(folder_path, name, num_per_plate)
@@ -358,7 +360,7 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
         should_pause = pause_callback is not None and len(frames) > 1
         
         reanalyze_recording(results_base, num_per_plate, detector, frames, 
-                          discobox_run, name, ground_truth, pause_callback, should_pause)
+                          discobox_run, name, ground_truth, pause_callback, should_pause, time_between_rec)
     else:
         analyze_recording(results_base, num_per_plate, detector, frames, discobox_run, 
                         name, num_recordings, ground_truth, count, time_between_rec)
