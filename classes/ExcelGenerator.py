@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
+import numpy as np
 
 
 class ExcelGenerator:
@@ -15,6 +16,7 @@ class ExcelGenerator:
         # Define color fills
         self.green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
         self.red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        self.dark_red_fill = PatternFill(start_color="9C0006", end_color="9C0006", fill_type="solid")
     
     def create_recordings_summary(self, summary_df, time_survival_path, excel_path, 
                                 recordings_base_path):
@@ -103,16 +105,29 @@ class ExcelGenerator:
         ws = wb.create_sheet(title=str(zone))
         
         # Write headers and data with conditional formatting
-        for r_idx, row in enumerate(dataframe_to_rows(pivot.reset_index(), 
-                                                     index=False, header=True), 1):
+        for r_idx, row in enumerate(dataframe_to_rows(pivot.reset_index(), index=False, header=True), 1):
             for c_idx, value in enumerate(row, 1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
-                if r_idx > 1 and c_idx > 1:  # Only data cells (skip headers)
+                
+                if r_idx == 1 or c_idx == 1:
+                    continue  # skip header cells
+
+                mite_id = pivot.reset_index().iloc[r_idx-2, 0]  # mite ID from first column
+                recording_num = pivot.reset_index().columns[c_idx-1]  # column = recording number
+                
+                # Get streak start for this mite
+                streak_start = zone_df.loc[zone_df['mite ID'] == mite_id, 'streak_start'].values
+                streak_start = streak_start[0] if len(streak_start) > 0 else np.nan
+                
+                if not np.isnan(streak_start) and recording_num >= streak_start:
+                    cell.fill = self.dark_red_fill  # fill dark red for streak
+                else:
                     if value == 'alive':
                         cell.fill = self.green_fill
                     elif value == 'dead':
                         cell.fill = self.red_fill
-        
+
+            
         # Add zone plot image
         zone_plot_path = os.path.join(by_mite_path, "zones", f"{zone}.png")
         self._add_zone_image(ws, zone_plot_path)

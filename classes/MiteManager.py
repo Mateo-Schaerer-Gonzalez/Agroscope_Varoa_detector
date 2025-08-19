@@ -335,6 +335,8 @@ class MiteManager:
             #apply streak dead rule
             self.mite_data = self.post_process_mite_data(self.mite_data, streak=2)
 
+            self.mite_data.to_csv("mite_data.csv", index=False)
+
            
         else:
             print("NO Mite data found")
