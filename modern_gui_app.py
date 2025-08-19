@@ -633,7 +633,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="� Dataset Input",
+            text="🗂️ Dataset Input",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -1727,7 +1727,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="� Analysis Progress",
+            text="🧪 Analysis Progress",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -1861,7 +1861,7 @@ class ModernVarroaDetectorApp:
         # Download ZIP button (centered)
         self.download_button = tk.Button(
             buttons_frame,
-            text="� Download Results",
+            text="🗂️ Download Results",
             font=self.fonts['body'],
             bg=self.colors['warning'],
             fg='white',

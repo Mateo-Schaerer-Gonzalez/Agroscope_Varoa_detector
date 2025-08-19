@@ -82,17 +82,6 @@ class ExcelGenerator:
         # Add images
         survival_path = os.path.join(base_path, f'recording{recording_num}', 'survival.png')
         self._add_image_to_sheet(ws, survival_path, 'H1')
-        
-        detection_path = os.path.join(base_path, f'recording{recording_num}', 'frame_0.jpg')
-        try:
-            if os.path.exists(detection_path):
-                img = XLImage(detection_path)
-                img.width = img.width * 0.3
-                img.height = img.height * 0.3
-                img.anchor = 'H31'
-                ws.add_image(img)
-        except Exception as e:
-            print(f"Failed to add detection image: {e}")
     
     def _create_mite_zone_sheet(self, wb, mite_data, zone, by_mite_path, 
                               frame_path, stage_zones):

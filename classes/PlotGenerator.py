@@ -14,8 +14,8 @@ class PlotGenerator:
     
     def __init__(self, img_size=(15, 10)):
         self.img_size = img_size
-    
-    def create_survival_graph(self, summary_data, mite_data, recording_number):
+
+    def create_survival_graph(self, summary_data, mite_data, recording_number, time_between_recording):
         """Create survival graph for a specific recording."""
         # Guard clauses
         if summary_data.empty or mite_data.empty:
@@ -42,7 +42,7 @@ class PlotGenerator:
         # Subplot 2: Bar chart of survival rates
         axes[1].bar(summary_data['zone ID'], summary_data['Survival %'], 
                    color="mediumseagreen", edgecolor="black")
-        axes[1].set_title("Survival Rate by Zone")
+        axes[1].set_title(f"Survival Rate by Zone after {time_between_recording*recording_number} min")
         axes[1].set_xlabel("Zone ID")
         axes[1].set_ylabel("Survival %")
         axes[1].set_ylim(0, 100)

@@ -62,7 +62,7 @@ class PlotterModular:
         
         try:
             fig = self.plot_generator.create_survival_graph(
-                self.stage.data, self.stage.mite_data, recording_number
+                self.stage.data, self.stage.mite_data, recording_number, self.time_between_recording
             )
             fig.savefig(self.path_handler.survival_path)
             plt.close(fig)

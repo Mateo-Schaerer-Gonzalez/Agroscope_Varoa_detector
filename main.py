@@ -216,6 +216,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
     
     # Generate per recording summaries
     for i in range(0, len(frames_by_recording)):
+        recording_number = i + 1
         print(f"PLOTTING recording {i + 1}")
         results_folder = os.path.join(reanalyze_path, f"recording{i+1}")
         plotter = Plotter(
@@ -224,7 +225,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
             discobox_run=discobox_run,
             time_between_recordings=time_between_rec
         )
-        
+
         plotter.save_frame0_detection(frames[0], thickness=2)
         plotter.make_survival_graph(recording_number=recording_number)
 
