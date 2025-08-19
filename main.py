@@ -9,10 +9,10 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from classes.detector import Detector
-from utils.tools import get_frames, convert_yolo_to_coords
+from utils.tools import get_frames
 from classes.MiteManager import MiteManager
 from classes.PlotterModular import Plotter  # Use backwards compatible import
-from utils.tools import read_counter, reset_counter, write_counter
+
 
 
 class AnalysisState:
@@ -107,20 +107,11 @@ def _process_single_recording(detector, frames, num_per_plate, name, ground_trut
     stage.update_mite_status(ground_truth)
     stage.save_data(recording_count=recording_number)
     
-    # Create plotter and generate outputs
-    plotter = Plotter(
-        stage=stage,
-        output_folder=results_folder,
-        discobox_run=discobox_run,
-        time_between_recordings=time_between_rec
-    )
-    
-    plotter.save_frame0_detection(frames[0], thickness=2)
-    plotter.make_survival_graph(recording_number=recording_number)
-    plotter.create_recording_pdf(recording_count=recording_number)
+   
+    #plotter.create_recording_pdf(recording_count=recording_number)
     
     stage.save()
-    return plotter, stage
+    return stage
 
 
 def _process_recording0(detector, frames, num_per_plate, name, discobox_run, results_folder=None):
@@ -218,12 +209,26 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
         frames = frames_by_recording[i]
         results_folder = os.path.join(reanalyze_path, f"recording{recording_number}")
         
-        plotter, stage = _process_single_recording(
+        stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
             results_folder, discobox_run, recording_number, time_between_rec=time_between_rec
         )
     
-    # Generate summary reports if we processed any recordings
+    # Generate per recording summaries
+    for i in range(0, len(frames_by_recording)):
+        print(f"PLOTTING recording {i + 1}")
+        results_folder = os.path.join(reanalyze_path, f"recording{i+1}")
+        plotter = Plotter(
+            stage=stage,
+            output_folder=results_folder,
+            discobox_run=discobox_run,
+            time_between_recordings=time_between_rec
+        )
+        
+        plotter.save_frame0_detection(frames[0], thickness=2)
+        plotter.make_survival_graph(recording_number=recording_number)
+
+    # general summaries
     if plotter and stage:
         _generate_summary_reports(plotter, stage)
 

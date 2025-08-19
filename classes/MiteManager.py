@@ -6,6 +6,7 @@ from PIL import Image
 import pandas as pd
 import pickle
 import os
+import numpy as np
 
 class MiteManager:
     """Manages mites detection, zone assignment, and data processing."""
@@ -238,7 +239,36 @@ class MiteManager:
         
                 if save:
                     mite.save_with_ground_truth(ground_truth)
-        
+
+
+    def post_process_mite_data(self,mites_data, streak):
+        # map status to numbers
+        mites_data.loc[:, "status_num"] = mites_data["status"].map({"alive": 0, "dead": 1})
+
+        # helper to get streak start for one group
+        def get_streak_start(series):
+            rolling_sum = series.rolling(window=streak).sum()
+            mask = rolling_sum == streak
+            if mask.any():
+                idx = mask.idxmax()  # first index where streak occurs
+                rec_num = mites_data.loc[idx, "recording"]
+                return rec_num - streak + 1
+            else:
+                return np.nan
+
+        # group by mite_ID and compute streak_start per mite
+        streak_starts = mites_data.groupby("mite ID")["status_num"].apply(get_streak_start)
+
+        # map the streak_start back to the original DataFrame
+        mites_data["streak_start"] = mites_data["mite ID"].map(streak_starts)
+
+
+        # Set status to 'dead' for recordings >= streak_start
+        mask = mites_data["streak_start"].notna() & (mites_data["recording"] >= mites_data["streak_start"])
+        mites_data.loc[mask, "status"] = "dead"
+
+        return mites_data
+
 
     def save_data(self, recording_count):
         # Step 1: Prepare the data
@@ -301,13 +331,13 @@ class MiteManager:
         
             self.mite_data = pd.concat([df_mites, self.mite_data], ignore_index=True)
             self.mite_data = self.mite_data.sort_values(by=['mite ID', 'recording'])
+
+            #apply streak dead rule
+            self.mite_data = self.post_process_mite_data(self.mite_data, streak=2)
+
+           
         else:
             print("NO Mite data found")
-
-
-       
-
-        
                 
         return self.data, self.mite_data
 

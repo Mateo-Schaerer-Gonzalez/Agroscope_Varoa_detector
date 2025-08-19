@@ -1,23 +1,25 @@
 import torch
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 import numpy as np
-import cv2
 import string
 
 class TextReader:
-    def __init__(self, model_name="microsoft/trocr-large-handwritten", device=None):
+    """
+    There are 3 main models to choose from, small, base and large.
+    """
+    def __init__(self, model_name="microsoft/trocr-small-handwritten", device=None):
+        # load directly from Hugging Face Hub
         self.processor = TrOCRProcessor.from_pretrained(model_name)
         self.model = VisionEncoderDecoderModel.from_pretrained(model_name)
+
+        # pick device
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.model.eval()
         print(f'using: {self.device}')
 
     def read(self, image):
-        """
-        There are 3 main models to choose from, small, base and large. 
-        Some other fine-tuned models: IAM Handwritten, SROIE Receipts
-        """
+    
 
         pixel_values = self.processor(image, return_tensors="pt").pixel_values.to(self.device)
 

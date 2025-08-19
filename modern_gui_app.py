@@ -125,7 +125,7 @@ class SplashScreen:
         # Subtitle
         subtitle_label = tk.Label(
             main_frame,
-            text="Advanced AI-Powered Mite Detection",
+            text="AI-Powered Mite Survival Assessment Tool",
             font=('Segoe UI', 16),
             fg='white',
             bg='#2d7d32'
@@ -2275,6 +2275,7 @@ class ModernVarroaDetectorApp:
             print("✅ Analysis continuation signal sent successfully")
         except Exception as e:
             print(f"❌ Error continuing analysis: {e}")
+            
         
         # Note: The original analysis thread will now continue with recording 2
     
