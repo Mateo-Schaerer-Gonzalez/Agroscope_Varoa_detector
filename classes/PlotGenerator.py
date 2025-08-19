@@ -40,7 +40,7 @@ class PlotGenerator:
         axes[0].axvline(Mite.threshold, color='red', linestyle='--', linewidth=2)
         
         # Subplot 2: Bar chart of survival rates
-        axes[1].bar(summary_data['Zone ID'], summary_data['Survival %'], 
+        axes[1].bar(summary_data['zone ID'], summary_data['Survival %'], 
                    color="mediumseagreen", edgecolor="black")
         axes[1].set_title("Survival Rate by Zone")
         axes[1].set_xlabel("Zone ID")
@@ -58,8 +58,8 @@ class PlotGenerator:
         
         plt.figure(figsize=(10, 6))
         
-        for zone in df['Zone ID'].unique():
-            zone_data = df[df['Zone ID'] == zone]
+        for zone in df['zone ID'].unique():
+            zone_data = df[df['zone ID'] == zone]
             plt.plot(
                 zone_data['recording'] * time_between_recording,
                 zone_data['Survival %'],

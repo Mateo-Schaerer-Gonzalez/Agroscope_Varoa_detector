@@ -272,7 +272,6 @@ class MiteManager:
 
     def save_data(self, recording_count):
         # Step 1: Prepare the data
-        summary_data = []
         mite_data = []
 
         for zone in self.zones:
@@ -284,48 +283,11 @@ class MiteManager:
             dead = total - alive
             survival_pct = (alive / total * 100) if total > 0 else 0.0
 
-          
-            summary_data.append({
-                "Zone ID": zone.zone_id,
-                "Total Mites": total,
-                "Alive Mites": alive,
-                "Dead Mites": dead,
-                "Survival %": round(survival_pct, 2),
-                "recording": recording_count
-            })
-
             # collect individual mite data
             for mite in zone.mites:
                 mite_data.append(mite.to_dict(recording_count))
 
-
-        if summary_data:
-            df_summary = pd.DataFrame(summary_data)
-            self.data = pd.concat([df_summary, self.data], ignore_index=True)
-             #merge identicall labels
-            self.data = (
-                self.data
-                .groupby(['Zone ID', 'recording'], as_index=False)
-                .agg({
-                    'Total Mites': 'sum',
-                    'Alive Mites': 'sum',
-                    'Dead Mites': 'sum',
-                })
-            )
-
-            #recalculate survival rate after merge
-            self.data['Survival %'] = ((self.data['Alive Mites'] / self.data['Total Mites']) * 100).round(2)
-
-
-            # Sort by recording and Zone
-            self.data = self.data.sort_values(by=['Zone ID', 'recording'])
-           
-
-        else:
-            print("found no mites..")
         if mite_data:
-
-
             df_mites = pd.DataFrame(mite_data)
 
         
@@ -335,12 +297,25 @@ class MiteManager:
             #apply streak dead rule
             self.mite_data = self.post_process_mite_data(self.mite_data, streak=2)
 
-            self.mite_data.to_csv("mite_data.csv", index=False)
+            # Calculate summary statistics by recording and zone_id
 
-           
-        else:
-            print("NO Mite data found")
-                
+            summary = self.mite_data.groupby(["recording", "zone ID"]).agg(
+                total_mites=("mite ID", "nunique"),
+                dead=("status", lambda x: (x == "dead").sum()),
+                alive=("status", lambda x: (x == "alive").sum())
+            ).reset_index()
+
+            summary["Survival %"] = summary.apply(
+                lambda row: (row["alive"] / row["total_mites"] * 100) if row["total_mites"] > 0 else 0.0,
+                axis=1
+            )
+
+            self.data = summary
+
+
+            #summary.to_csv("mite_summary.csv", index=False)
+            #self.mite_data.to_csv("mite_data.csv", index=False)
+
         return self.data, self.mite_data
 
 
