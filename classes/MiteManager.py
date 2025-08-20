@@ -270,7 +270,7 @@ class MiteManager:
         return mites_data
 
 
-    def save_data(self, recording_count):
+    def save_data(self, recording_count, dead_streak):
         # Step 1: Prepare the data
         mite_data = []
 
@@ -295,7 +295,7 @@ class MiteManager:
             self.mite_data = self.mite_data.sort_values(by=['mite ID', 'recording'])
 
             #apply streak dead rule
-            self.mite_data = self.post_process_mite_data(self.mite_data, streak=2)
+            self.mite_data = self.post_process_mite_data(self.mite_data, dead_streak)
 
             # Calculate summary statistics by recording and zone_id
 

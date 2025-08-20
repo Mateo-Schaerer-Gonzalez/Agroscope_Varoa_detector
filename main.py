@@ -85,7 +85,7 @@ def _create_reanalysis_directory(results_base):
 
 
 def _process_single_recording(detector, frames, num_per_plate, name, ground_truth, 
-                            results_folder, discobox_run, recording_number, time_between_rec=1):
+                            results_folder, discobox_run, recording_number, time_between_rec=1, dead_streak=1):
     """Process a single recording and generate its plots and data."""
     # Guard clause: Check if frames exist (frames should be a single numpy stack here)
     if frames is None or len(frames) == 0:
@@ -101,13 +101,12 @@ def _process_single_recording(detector, frames, num_per_plate, name, ground_trut
         coordinate_file=f"Zoning/coordinates{num_per_plate}.txt",
         mites_detection=detector.result,
         frames=frames,
-        name=name
+        name=name,
     )
     
     stage.update_mite_status(ground_truth)
-    stage.save_data(recording_count=recording_number)
-    
-   
+    stage.save_data(recording_count=recording_number, dead_streak=dead_streak)
+
     #plotter.create_recording_pdf(recording_count=recording_number)
     
     stage.save()
@@ -157,7 +156,7 @@ def _generate_summary_reports(plotter, stage):
 
 
 def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recording, 
-                       discobox_run, name, ground_truth, pause_callback=None, pause_after_recording1=False, time_between_rec=1):
+                       discobox_run, name, ground_truth, pause_callback=None, pause_after_recording1=False, time_between_rec=1, dead_streak=1):
     """Reanalyze recordings and generate comprehensive reports."""
     # Guard clauses - frames_by_recording is a list of numpy stacks
     if not frames_by_recording or len(frames_by_recording) == 0:
@@ -211,7 +210,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
         
         stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
-            results_folder, discobox_run, recording_number, time_between_rec=time_between_rec
+            results_folder, discobox_run, recording_number, time_between_rec=time_between_rec, dead_streak=dead_streak
         )
     
     # Generate per recording summaries
@@ -235,7 +234,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
 
 
 def continue_reanalyze_from_recording2(results_base, num_per_plate, detector, frames_by_recording, 
-                                     discobox_run, name, ground_truth):
+                                     discobox_run, name, ground_truth, dead_streak=1):
     """Continue reanalysis from recording 2 after pause."""
     # Guard clauses
     if not frames_by_recording or len(frames_by_recording) < 2:
@@ -277,7 +276,7 @@ def continue_reanalyze_from_recording2(results_base, num_per_plate, detector, fr
         print(f"🔄 Processing recording {recording_number}...")
         plotter, stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
-            results_folder, discobox_run, recording_number
+            results_folder, discobox_run, recording_number, dead_streak=dead_streak
         )
     
     # Generate summary reports
@@ -292,7 +291,7 @@ def continue_reanalyze_from_recording2(results_base, num_per_plate, detector, fr
 
 
 def analyze_recording(results_base, num_per_plate, detector, frames, discobox_run, 
-                     name, num_recordings, ground_truth, count, time_between_recording):
+                     name, num_recordings, ground_truth, count, time_between_recording, dead_streak=1):
     """Analyze a single recording session."""
     # Guard clauses - frames is a single numpy stack
     if frames is None or len(frames) == 0:
@@ -308,7 +307,7 @@ def analyze_recording(results_base, num_per_plate, detector, frames, discobox_ru
     
     plotter, stage = _process_single_recording(
         detector, frames, num_per_plate, name, ground_truth,
-        results_folder, discobox_run, count
+        results_folder, discobox_run, count, dead_streak=dead_streak
     )
     
     # Update plotter with time between recordings
@@ -336,7 +335,7 @@ def _validate_predict_inputs(folder_path, name, num_per_plate):
 
 def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=False, 
            num_recordings=2, count=2, time_between_rec=1, output_folder=None, 
-           pause_callback=None):
+           pause_callback=None, dead_streak=1):
     print("GOT TIME BETWEEN REC:", time_between_rec)
     """Main prediction function that orchestrates the analysis process."""
     # Guard clauses
@@ -366,10 +365,10 @@ def predict(folder_path, name, num_per_plate, reanalyze=False, discobox_run=Fals
         should_pause = pause_callback is not None and len(frames) > 1
         
         reanalyze_recording(results_base, num_per_plate, detector, frames, 
-                          discobox_run, name, ground_truth, pause_callback, should_pause, time_between_rec)
+                          discobox_run, name, ground_truth, pause_callback, should_pause, time_between_rec, dead_streak)
     else:
         analyze_recording(results_base, num_per_plate, detector, frames, discobox_run, 
-                        name, num_recordings, ground_truth, count, time_between_rec)
+                        name, num_recordings, ground_truth, count, time_between_rec, dead_streak)
 
     
 
