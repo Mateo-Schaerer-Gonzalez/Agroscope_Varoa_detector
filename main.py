@@ -85,7 +85,7 @@ def _create_reanalysis_directory(results_base):
 
 
 def _process_single_recording(detector, frames, num_per_plate, name, ground_truth, 
-                            results_folder, discobox_run, recording_number, time_between_rec=1, dead_streak=1):
+                            results_folder, discobox_run, recording_number, time_between_rec=1, dead_streak=1, num_recordings=1):
     """Process a single recording and generate its plots and data."""
     # Guard clause: Check if frames exist (frames should be a single numpy stack here)
     if frames is None or len(frames) == 0:
@@ -105,7 +105,7 @@ def _process_single_recording(detector, frames, num_per_plate, name, ground_trut
     )
     
     stage.update_mite_status(ground_truth)
-    stage.save_data(recording_count=recording_number, dead_streak=dead_streak)
+    stage.save_data(recording_count=recording_number, dead_streak=dead_streak, num_recordings=num_recordings)
 
     #plotter.create_recording_pdf(recording_count=recording_number)
     
@@ -210,7 +210,7 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
         
         stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
-            results_folder, discobox_run, recording_number, time_between_rec=time_between_rec, dead_streak=dead_streak
+            results_folder, discobox_run, recording_number, time_between_rec=time_between_rec, dead_streak=dead_streak, num_recordings=len(frames_by_recording)
         )
     
     # Generate per recording summaries
@@ -276,7 +276,7 @@ def continue_reanalyze_from_recording2(results_base, num_per_plate, detector, fr
         print(f"🔄 Processing recording {recording_number}...")
         plotter, stage = _process_single_recording(
             detector, frames, num_per_plate, name, ground_truth,
-            results_folder, discobox_run, recording_number, dead_streak=dead_streak
+            results_folder, discobox_run, recording_number, dead_streak=dead_streak, num_recordings=len(frames_by_recording)
         )
     
     # Generate summary reports

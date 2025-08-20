@@ -241,7 +241,7 @@ class MiteManager:
                     mite.save_with_ground_truth(ground_truth)
 
 
-    def post_process_mite_data(self,mites_data, streak):
+    def post_process_mite_data(self,mites_data, streak, num_recordings, recording_count):
         # map status to numbers
         mites_data.loc[:, "status_num"] = mites_data["status"].map({"alive": 0, "dead": 1})
 
@@ -256,21 +256,35 @@ class MiteManager:
             else:
                 return np.nan
 
+
+
         # group by mite_ID and compute streak_start per mite
         streak_starts = mites_data.groupby("mite ID")["status_num"].apply(get_streak_start)
 
         # map the streak_start back to the original DataFrame
         mites_data["streak_start"] = mites_data["mite ID"].map(streak_starts)
 
+        # Calculate streak_end for each mite
+        mites_data["streak_end"] = mites_data["streak_start"] + streak - 1
 
-        # Set status to 'dead' for recordings >= streak_start
-        mask = mites_data["streak_start"].notna() & (mites_data["recording"] >= mites_data["streak_start"])
-        mites_data.loc[mask, "status"] = "dead"
+        if recording_count >= num_recordings:
+            mites_data["status"] = np.select(
+                [
+                    mites_data["streak_start"].notna() & (mites_data["recording"] >= mites_data["streak_start"]),
+                    mites_data["streak_start"].notna() & (mites_data["recording"] < mites_data["streak_start"]),
+                    mites_data["streak_start"].isna()
+                ],
+                ["dead", # dead if streak_start is not set and recording is greater than streak_start
+                 "alive", # alive if streak_start is not set and recording is less than streak_start
+                 "alive"], #alive if no streak
+                default=mites_data["status"]
+            )
 
+        
         return mites_data
 
 
-    def save_data(self, recording_count, dead_streak):
+    def save_data(self, recording_count, dead_streak, num_recordings):
         # Step 1: Prepare the data
         mite_data = []
 
@@ -295,7 +309,7 @@ class MiteManager:
             self.mite_data = self.mite_data.sort_values(by=['mite ID', 'recording'])
 
             #apply streak dead rule
-            self.mite_data = self.post_process_mite_data(self.mite_data, dead_streak)
+            self.mite_data = self.post_process_mite_data(self.mite_data, dead_streak, num_recordings, recording_count)
 
             # Calculate summary statistics by recording and zone_id
 
@@ -313,8 +327,8 @@ class MiteManager:
             self.data = summary
 
 
-            #summary.to_csv("mite_summary.csv", index=False)
-            #self.mite_data.to_csv("mite_data.csv", index=False)
+            summary.to_csv("mite_summary.csv", index=False)
+            self.mite_data.to_csv("mite_data.csv", index=False)
 
         return self.data, self.mite_data
 

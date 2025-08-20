@@ -107,8 +107,12 @@ class ExcelGenerator:
                 # Get streak start for this mite
                 streak_start = zone_df.loc[zone_df['mite ID'] == mite_id, 'streak_start'].values
                 streak_start = streak_start[0] if len(streak_start) > 0 else np.nan
+
+                # Get streak end for this mite
+                streak_end = zone_df.loc[zone_df['mite ID'] == mite_id, 'streak_end'].values
+                streak_end = streak_end[0] if len(streak_end) > 0 else np.nan
                 
-                if not np.isnan(streak_start) and recording_num >= streak_start:
+                if not np.isnan(streak_start) and recording_num in range(int(streak_start), int(streak_end) + 1):
                     cell.fill = self.dark_red_fill  # fill dark red for streak
                 else:
                     if value == 'alive':
