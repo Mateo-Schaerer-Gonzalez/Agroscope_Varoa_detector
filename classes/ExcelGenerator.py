@@ -7,6 +7,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.drawing.image import Image as XLImage
 import numpy as np
+import shutil
 
 
 class ExcelGenerator:

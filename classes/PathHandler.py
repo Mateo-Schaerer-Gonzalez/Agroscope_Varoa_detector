@@ -25,7 +25,7 @@ class PathHandler:
         """Initialize all required paths."""
         self.pdf_path = os.path.join(self.output_path, "recording.pdf")
         self.csv_path = os.path.join(self.output_path, "summary.csv")
-        self.frame_path = os.path.join(self.output_path, "frame_0.jpg")
+        self.frame_path = os.path.join(self.general_summary_path, "frame_0.jpg")
         self.survival_path = os.path.join(self.output_path, "survival.png")
         self.time_survival_path = os.path.join(self.general_summary_path, "survival.png")
         self.distribution_max_diff = os.path.join(self.general_summary_path, 'max_diff.png')

@@ -72,8 +72,8 @@ def get_analysis_state():
 
 
 
-def _create_reanalysis_directory(results_base):
-    """Create a new reanalysis directory with incremental naming."""
+"""def _create_reanalysis_directory(results_base):
+    Create a new reanalysis directory with incremental naming.
     i = 1
     while True:
         reanalyze_path = os.path.join(results_base, f"reanalysis{i}")
@@ -81,7 +81,7 @@ def _create_reanalysis_directory(results_base):
             os.makedirs(reanalyze_path)
             print(f"reanalysis{i} created...")
             return reanalyze_path
-        i += 1
+        i += 1"""
 
 
 def _process_single_recording(detector, frames, num_per_plate, name, ground_truth, 
@@ -171,9 +171,9 @@ def reanalyze_recording(results_base, num_per_plate, detector, frames_by_recordi
     analysis_state.user_confirmed_continue = False
     analysis_state.pause_event.clear()
     analysis_state.continue_event.clear()
-    
-    reanalyze_path = _create_reanalysis_directory(results_base)
-    
+
+    reanalyze_path = results_base
+
     plotter = None
     stage = None
     

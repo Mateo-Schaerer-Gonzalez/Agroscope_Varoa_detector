@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 import os
-#import torch
+import torch
 
 class Detector:
     """YOLO-based detector for Varroa mites."""
@@ -18,7 +18,7 @@ class Detector:
             "model_weights",
             "runs",
             "detect",
-            "fine_tuned_varro_model9",
+            "fine_tuned_varro_model6",
             "weights",
             "best.pt"
         )
@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
         model.train(
             data="yolo_data/data.yaml",  # path to your dataset YAML
-            epochs=50,
+            epochs=70,
             imgsz=1024,
             batch=1,
             name="fine_tuned_varro_model",

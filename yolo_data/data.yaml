@@ -1,6 +1,7 @@
 path: yolo_data
-train: images
-val: images  # if you don’t have val, point to train as a temp fallback
 
-nc: 1  # number of classes
-names: ["varroa"]  # your actual class names
+train: images/train   
+val: images/val       
+
+nc: 1
+names: ["varroa"]
