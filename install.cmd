@@ -3,7 +3,8 @@ setlocal EnableExtensions
 
 REM ==========================
 REM Varroa Detector Installer
-REM - Creates/updates conda env from env.yaml
+REM - Deletes previous conda env (if exists)
+REM - Creates conda env from env.yaml
 REM - Creates Desktop shortcut to launch the app
 REM ==========================
 
@@ -48,22 +49,17 @@ for /f "usebackq delims=" %%E in (`powershell -NoProfile -Command "$yml = Get-Co
 if not defined ENV_NAME set "ENV_NAME=varroa-env"
 echo [INFO] Target conda environment: %ENV_NAME%
 
-REM ---- Create or update the environment (via PowerShell to avoid CMD parsing issues) ----
-echo [INFO] Creating/updating environment from env.yaml (this can take a while)...
-set "_PS=%TEMP%\mk_varroa_env_%RANDOM%.ps1"
-> "%_PS%" echo $ErrorActionPreference = 'SilentlyContinue'
->>"%_PS%" echo $conda = '%CONDA_BAT%'
->>"%_PS%" echo $envFile = '%ENV_FILE%'
->>"%_PS%" echo $p = Start-Process -FilePath $conda -ArgumentList @('env','create','-f',$envFile) -Wait -PassThru
->>"%_PS%" echo if ($p.ExitCode -ne 0) { Write-Host '[WARN] Create failed (likely exists). Updating...'; $p2 = Start-Process -FilePath $conda -ArgumentList @('env','update','-f',$envFile,'--prune') -Wait -PassThru; if ($p2.ExitCode -ne 0) { Write-Host '[ERR ] Update failed.'; exit 1 } }
->>"%_PS%" echo exit 0
+REM ---- Delete previous environment (if exists) ----
+echo [INFO] Removing previous environment (if any)...
+powershell -NoProfile -Command "& { Start-Process -FilePath '%CONDA_BAT%' -ArgumentList @('env','remove','-n','%ENV_NAME%','--yes') -Wait }"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%_PS%"
+REM ---- Create new environment ----
+echo [INFO] Creating environment from env.yaml...
+powershell -NoProfile -Command "& { Start-Process -FilePath '%CONDA_BAT%' -ArgumentList @('env','create','-f','%ENV_FILE%') -Wait }"
 if errorlevel 1 (
-  del /q "%_PS%" >nul 2>&1
+  echo [ERR ] Environment creation failed.
   goto :fail
 )
-del /q "%_PS%" >nul 2>&1
 
 REM ---- Choose app script ----
 set "APP_SCRIPT="
@@ -75,7 +71,7 @@ if not defined APP_SCRIPT (
 )
 echo [INFO] App script: %APP_SCRIPT%
 
-REM ---- Resolve Desktop path (handles OneDrive redirection) ----
+REM ---- Resolve Desktop path ----
 set "DESKTOP="
 for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do set "DESKTOP=%%D"
 if not defined DESKTOP set "DESKTOP=%USERPROFILE%\Desktop"
@@ -88,7 +84,7 @@ set "SHORTCUT=%DESKTOP%\Varroa Detector.lnk"
 set "ICON_PATH=%SCRIPT_DIR%app\icons\honeycomb_logo_transparent.ico"
 echo [INFO] Creating desktop shortcut: %SHORTCUT%
 
-REM ---- Create .lnk via temporary VBScript to avoid quoting pitfalls ----
+REM ---- Create shortcut via VBScript ----
 set "_VBS=%TEMP%\mk_varroa_link_%RANDOM%.vbs"
 > "%_VBS%" echo Set oWS = CreateObject("WScript.Shell")
 >>"%_VBS%" echo sLink = "%SHORTCUT%"
@@ -102,46 +98,11 @@ set "_VBS=%TEMP%\mk_varroa_link_%RANDOM%.vbs"
 >>"%_VBS%" echo   oLnk.IconLocation = "%ICON_PATH%"
 >>"%_VBS%" echo End If
 >>"%_VBS%" echo oLnk.Save
-
-REM Try to resolve pythonw.exe in the conda env to avoid console windows
-set "PYW_EXE="
-for %%A in ("%CONDA_BAT%") do set "CB_DIR=%%~dpA"
-set "cand1=%CB_DIR%..\..\envs\%ENV_NAME%\pythonw.exe"
-set "cand2=%CB_DIR%..\envs\%ENV_NAME%\pythonw.exe"
-if exist "%cand1%" set "PYW_EXE=%cand1%"
-if not defined PYW_EXE if exist "%cand2%" set "PYW_EXE=%cand2%"
-if not defined PYW_EXE (
-  for %%R in ("%USERPROFILE%\miniforge3" "%USERPROFILE%\miniconda3" "%USERPROFILE%\anaconda3" "%ProgramData%\miniconda3" "%ProgramData%\miniforge3") do (
-    if exist "%%~R\envs\%ENV_NAME%\pythonw.exe" (
-      set "PYW_EXE=%%~R\envs\%ENV_NAME%\pythonw.exe"
-      goto :pyw_found
-    )
-  )
-)
-:pyw_found
-
-> "%_VBS%" echo Set fso = CreateObject("Scripting.FileSystemObject")
->>"%_VBS%" echo Set oWS = CreateObject("WScript.Shell")
->>"%_VBS%" echo sLink = "%SHORTCUT%"
->>"%_VBS%" echo Set oLnk = oWS.CreateShortcut(sLink)
->>"%_VBS%" echo If Len("%PYW_EXE%") ^> 0 And fso.FileExists("%PYW_EXE%") Then
->>"%_VBS%" echo   oLnk.TargetPath = "%PYW_EXE%"
->>"%_VBS%" echo   oLnk.Arguments = """%APP_SCRIPT%"""
->>"%_VBS%" echo Else
->>"%_VBS%" echo   oLnk.TargetPath = "%CONDA_BAT%"
->>"%_VBS%" echo   oLnk.Arguments = "run -n %ENV_NAME% pythonw ""%APP_SCRIPT%"""
->>"%_VBS%" echo End If
->>"%_VBS%" echo oLnk.WorkingDirectory = "%SCRIPT_DIR%"
->>"%_VBS%" echo oLnk.WindowStyle = 7
->>"%_VBS%" echo oLnk.Description = "Launch Varroa Detector"
->>"%_VBS%" echo If fso.FileExists("%ICON_PATH%") Then oLnk.IconLocation = "%ICON_PATH%"
->>"%_VBS%" echo oLnk.Save
 cscript //nologo "%_VBS%"
-if errorlevel 1 goto :fail
 del /q "%_VBS%" >nul 2>&1
 
 echo.
-echo [OK  ] All set!
+echo [OK  ] Installation complete!
 echo [OK  ] - Conda environment: %ENV_NAME%
 echo [OK  ] - Shortcut created at: %SHORTCUT%
 echo.
