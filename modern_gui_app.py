@@ -1130,7 +1130,7 @@ class ModernVarroaDetectorApp:
         # Grid setup with modern entries
         configs = [
             ("Analysis Name:", self.analysis_name, "entry"),
-            ("samples per plate:", self.plates_per_recording, "combo", ["1", "2"]),
+            ("sample rows per plate:", self.plates_per_recording, "combo", ["1", "2"]),
             ("Time Between Recordings (min):", self.time_between_recordings, "entry"),
             ("Dead Streak (frames):", self.dead_streak, "entry")
         ]
@@ -1775,6 +1775,59 @@ class ModernVarroaDetectorApp:
             fg=self.colors['text_muted']
         )
         self.progress_percent.pack(pady=(5, 0))
+
+        # Spinner (indeterminate / animated wheel)
+        self.spinner_label = tk.Label(
+            progress_content,
+            text="",
+            font=('Segoe UI', 18, 'bold'),
+            bg=self.colors['bg_secondary'],
+            fg=self.colors['accent']
+        )
+        self.spinner_label.pack(pady=(10, 0))
+        self._spinner_running = False
+        self._spinner_cycle = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+        self._spinner_index = 0
+
+    def start_spinner(self, message: str = "Running analysis..."):
+        """Start spinner animation with a status message."""
+        if not hasattr(self, 'spinner_label'):
+            return
+        self._spinner_running = True
+        if hasattr(self, 'progress_label'):
+            try:
+                self.progress_label.configure(text=message, fg=self.colors.get('text_primary', 'black'))
+            except Exception:
+                pass
+        self._animate_spinner()
+
+    def stop_spinner(self, final_message: str = "Analysis complete"):
+        """Stop spinner and show a final message."""
+        self._spinner_running = False
+        if hasattr(self, 'spinner_label'):
+            try:
+                self.spinner_label.configure(text="")
+            except Exception:
+                pass
+        if hasattr(self, 'progress_label'):
+            try:
+                self.progress_label.configure(text=final_message, fg=self.colors.get('success', 'green'))
+            except Exception:
+                pass
+
+    def _animate_spinner(self):
+        """Internal: update spinner frame."""
+        if not self._spinner_running:
+            return
+        try:
+            frame = self._spinner_cycle[self._spinner_index % len(self._spinner_cycle)]
+            self._spinner_index += 1
+            self.spinner_label.configure(text=frame)
+        except Exception:
+            pass
+        # Schedule next frame
+        if self._spinner_running:
+            self.root.after(80, self._animate_spinner)
     
     def create_action_buttons_section(self, parent):
         """Create modern action buttons"""
@@ -1958,6 +2011,9 @@ class ModernVarroaDetectorApp:
         self.progress_percent.configure(text="0%")
         self.progress_label.configure(text="Initializing analysis...", fg=self.colors['text_primary'])
         self.status_label.configure(text="● Running", fg=self.colors['warning'])
+        # Start spinner for visual feedback
+        if hasattr(self, 'start_spinner'):
+            self.start_spinner("Initializing analysis...")
         
         # Lock zones immediately when analysis starts to prevent changes during analysis
         self.lock_zones()
@@ -2076,12 +2132,24 @@ class ModernVarroaDetectorApp:
     
     def update_ui_for_recording1_pause(self):
         """Update UI elements for recording 1 pause state"""
-        # Update progress
+        # Show orange verification prompt above progress bar
         if hasattr(self, 'progress_label'):
-            self.progress_label.configure(
-                text="🔍 Verify texts and continue",
-                fg=self.colors.get('warning', 'orange')
-            )
+            try:
+                self.progress_label.configure(
+                    text="🔍 Verify texts and continue",
+                    fg=self.colors.get('warning', 'orange')
+                )
+            except Exception:
+                pass
+
+        # Hide spinner during verification phase
+        if hasattr(self, 'spinner_label') and self.spinner_label.winfo_exists():
+            if hasattr(self, 'stop_spinner'):
+                self.stop_spinner("Paused for verification")
+            try:
+                self.spinner_label.pack_forget()
+            except Exception:
+                pass
         
         # Update status
         if hasattr(self, 'status_label'):
@@ -2279,10 +2347,17 @@ class ModernVarroaDetectorApp:
             self.stop_button.configure(state="normal", bg=self.colors.get('error', 'red'))
         
         if hasattr(self, 'progress_label'):
-            self.progress_label.configure(
-                text="Processing recordings ...",
-                fg=self.colors.get('text_primary', 'black')
-            )
+            # Do not alter existing text over progress bar per user request
+            pass
+
+        # Restore spinner when continuing
+        if hasattr(self, 'spinner_label'):
+            try:
+                self.spinner_label.pack(pady=(10,0))
+            except Exception:
+                pass
+        if hasattr(self, 'start_spinner'):
+            self.start_spinner("Processing recordings ...")
         
         if hasattr(self, 'status_label'):
             self.status_label.configure(text="● Running", fg=self.colors.get('warning', 'orange'))
@@ -2364,6 +2439,8 @@ class ModernVarroaDetectorApp:
         """Handle successful analysis completion"""
         self.analysis_running = False
         self.analysis_complete_flag = True  # Mark analysis as completed for text verification
+        if hasattr(self, 'stop_spinner'):
+            self.stop_spinner("Analysis complete!")
         
         # Reset recording 1 pause flags since full analysis is now complete
         self.recording1_pause = False
@@ -2724,6 +2801,8 @@ class ModernVarroaDetectorApp:
         self.progress_percent.configure(text="0%")
         self.progress_label.configure(text="❌ Analysis failed", fg=self.colors['error'])
         self.status_label.configure(text="● Error", fg=self.colors['error'])
+        if hasattr(self, 'stop_spinner'):
+            self.stop_spinner("Analysis failed")
         
         # Refresh image display to show unlocked zones
         if self.selected_folder.get():

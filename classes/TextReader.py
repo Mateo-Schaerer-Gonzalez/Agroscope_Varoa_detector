@@ -56,7 +56,7 @@ class TextReader:
         
 
 
-    def clean_text(sel,text):
+    def clean_text(self, text):
         # Convert to lowercase
         text = text.lower()
         # Remove trailing punctuation and whitespace
