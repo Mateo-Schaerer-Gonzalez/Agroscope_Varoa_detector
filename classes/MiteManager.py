@@ -291,11 +291,7 @@ class MiteManager:
         for zone in self.zones:
             if zone.zone_id == "EMPTY":
                 continue
-
-            total = len(zone.mites)
-            alive = sum(1 for mite in zone.mites if mite.alive)
-            dead = total - alive
-            survival_pct = (alive / total * 100) if total > 0 else 0.0
+       
 
             # collect individual mite data
             for mite in zone.mites:

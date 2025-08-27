@@ -7,7 +7,7 @@ class TextReader:
     """
     There are 3 main models to choose from, small, base and large.
     """
-    def __init__(self, model_name="microsoft/trocr-small-handwritten", device=None):
+    def __init__(self, model_name="microsoft/trocr-large-handwritten", device=None):
         # load directly from Hugging Face Hub
         self.processor = TrOCRProcessor.from_pretrained(model_name)
         self.model = VisionEncoderDecoderModel.from_pretrained(model_name)
@@ -46,7 +46,7 @@ class TextReader:
         CONFIDENCE_THRESHOLD = 0.6
 
         if avg_confidence < CONFIDENCE_THRESHOLD:
-            return "EMPTY"
+            return "Could not read text"
         
         else:
             #clean the text

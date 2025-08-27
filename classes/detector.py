@@ -42,9 +42,9 @@ class Detector:
         try:
             result = self.model(
                 image,
-                imgsz=1024,  # fine tuned uses 512 / 6016
+                imgsz=1024,  # fine tuned uses 1024 / not fine tuned 6016
                 max_det=2000,
-                conf=0.1,
+                conf=0.2,
                 iou=0.5,
                 save=False,
                 show_labels=False,

@@ -214,8 +214,18 @@ class SplashScreen:
 
 class ModernVarroaDetectorApp:
     def __init__(self):
-        # Main Tk root
-        self.root = tk.Tk()
+        # Main Tk root (prefer TkinterDnD if available so we can enable DnD before building widgets)
+        try:
+            from tkinterdnd2 import TkinterDnD, DND_FILES  # type: ignore
+            self.root = TkinterDnD.Tk()
+            self.dnd_available = True
+            self.DND_FILES = DND_FILES
+            print("✅ Drag-and-drop support enabled (tkinterdnd2 detected)")
+        except Exception:
+            self.root = tk.Tk()
+            self.dnd_available = False
+            self.DND_FILES = None
+            print("ℹ️ tkinterdnd2 not available at startup – drag-and-drop disabled (click to browse still works)")
 
         # Set window icon (taskbar + title bar) to app icon when possible
         try:
@@ -585,7 +595,9 @@ class ModernVarroaDetectorApp:
         def _on_mousewheel(event):
             main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-    
+        # Enable drag-and-drop functionality
+        self.setup_drag_drop()
+        
     def create_title_section(self, parent):
         """Create modern title section with gradient effect"""
         title_frame = tk.Frame(parent, bg=self.colors['bg_primary'], height=140)
@@ -692,24 +704,19 @@ class ModernVarroaDetectorApp:
             widget.bind("<Button-1>", lambda e: self.browse_folder())
     
     def setup_drag_drop(self):
-        """Setup drag and drop functionality (fallback to click if not available)"""
+        """Register drop target if tkinterdnd2 was available at construction time."""
+        if not getattr(self, 'dnd_available', False):
+            # Already informed user in __init__
+            return
         try:
-            # Try to import drag and drop functionality
-            from tkinterdnd2 import DND_FILES, TkinterDnD
-            
-            # Convert root to support drag and drop
-            self.root = TkinterDnD.Tk()
-            self.root.title("Varroa Detector - AI-Powered Mite Analysis")
-            self.root.geometry("1000x800")
-            self.root.configure(bg=self.colors['bg_primary'])
-            
-            # Enable drag and drop on the drop frame
-            self.drop_frame.drop_target_register(DND_FILES)
+            # Ensure drop_frame exists
+            if not hasattr(self, 'drop_frame'):
+                return
+            self.drop_frame.drop_target_register(self.DND_FILES)
             self.drop_frame.dnd_bind('<<Drop>>', self.on_drop)
-            
-        except ImportError:
-            # Fallback to click-only functionality
-            print("Drag and drop not available, using click-to-browse only")
+            print("✅ Drag-and-drop area registered")
+        except Exception as e:
+            print(f"⚠️ Failed to enable drag-and-drop: {e}")
     
     def on_drop(self, event):
         """Handle drag and drop events"""
@@ -1123,7 +1130,7 @@ class ModernVarroaDetectorApp:
         # Grid setup with modern entries
         configs = [
             ("Analysis Name:", self.analysis_name, "entry"),
-            ("Plates per Recording:", self.plates_per_recording, "combo", ["1", "2"]),
+            ("samples per plate:", self.plates_per_recording, "combo", ["1", "2"]),
             ("Time Between Recordings (min):", self.time_between_recordings, "entry"),
             ("Dead Streak (frames):", self.dead_streak, "entry")
         ]
