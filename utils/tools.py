@@ -27,11 +27,26 @@ def get_frames(folder_path, discobox_run=True, reanalyze=True):
         frames = _load_frames_from_folder(subfolder)
         if frames:
             frames_by_folder[subfolder] = np.stack(frames)
+
+
     
+
     if not frames_by_folder:
         raise ValueError("No images found in folder or none could be loaded.")
     
-    return _return_frames_based_on_mode(frames_by_folder, reanalyze)
+    return  _return_frames_based_on_mode(frames_by_folder, reanalyze)
+
+
+def get_settings(folder_path):
+    """Load settings from a text file."""
+    settings_file = os.path.join(folder_path, "settings.txt")
+    if not os.path.exists(settings_file):
+        raise FileNotFoundError(f"Settings file not found: {settings_file}")
+
+    with open(settings_file, "r") as f:
+        settings = f.read()
+
+    return settings
 
 
 def _resolve_folder_path(folder_path, discobox_run):

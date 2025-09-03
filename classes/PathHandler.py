@@ -35,7 +35,10 @@ class PathHandler:
         self.excel_by_zones = os.path.join(self.by_mite_path, "mites.xlsx")
         self.excel_by_recording = os.path.join(self.general_summary_path, "recordings_summary.xlsx")
         self.time_file_path = os.path.join(self.general_summary_path, os.pardir, "time_between_recording.txt")
-        
+
+        # Find the settings file in the general summary path
+        self.settings_file_path = os.path.join(self.general_summary_path, ".settings.txt")
+
         # Create necessary directories
         self._create_directories()
     

@@ -20,7 +20,8 @@ class ExcelGenerator:
         self.dark_red_fill = PatternFill(start_color="9C0006", end_color="9C0006", fill_type="solid")
     
     def create_recordings_summary(self, summary_df, time_survival_path, excel_path, 
-                                recordings_base_path):
+                                recordings_base_path, settings):
+        
         """Create Excel summary with recordings data."""
         # Guard clause
         if summary_df.empty:
@@ -30,7 +31,16 @@ class ExcelGenerator:
         wb.remove(wb.active)
         
         recordings = sorted(summary_df['recording'].unique())
-        
+
+    
+        #add settings used sheet:
+        ws = wb.create_sheet(title="Settings")
+        ws.append(["Settings Used"])
+
+        for key, value in settings.settings_data.items():
+            ws.append([key, value])
+        print(f"Settings sheet added to Excel.")
+
         # Add overview sheet
         ws = wb.create_sheet(title="Overview")
         self._add_image_to_sheet(ws, time_survival_path, 'A1')
@@ -68,6 +78,8 @@ class ExcelGenerator:
                 ws.add_image(img)
         except Exception as e:
             print(f"Failed to add image {image_path}: {e}")
+
+   
     
     def _create_recording_sheet(self, wb, summary_df, recording_num, base_path):
         """Create a sheet for a specific recording."""

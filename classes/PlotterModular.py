@@ -208,9 +208,10 @@ class PlotterModular:
                 self.stage.data,
                 self.path_handler.time_survival_path,
                 self.path_handler.excel_by_recording,
-                recordings_base_path
+                recordings_base_path,
+                self.stage.settings
             )
-            
+
         except ValueError as e:
             print(f"Excel generation error: {e}")
             self.stage.reset()

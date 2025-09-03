@@ -11,7 +11,7 @@ import numpy as np
 class MiteManager:
     """Manages mites detection, zone assignment, and data processing."""
 
-    def __init__(self, mites_detection, frames, coordinate_file, name):
+    def __init__(self, mites_detection, frames, coordinate_file, name, settings):
         # Guard clauses
         if not mites_detection:
             raise ValueError("Mites detection results must be provided")
@@ -29,14 +29,14 @@ class MiteManager:
         if os.path.exists(self.save_path):
             self.load_miteManager(frames)
         else:
-            self._initialize_new_manager(mites_detection, frames, coordinate_file, name)
+            self._initialize_new_manager(mites_detection, frames, coordinate_file, name, settings)
 
     def _initialize_paths(self):
         """Initialize file paths."""
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.save_path = os.path.join(base_dir, "mite_manager.plk")
 
-    def _initialize_new_manager(self, mites_detection, frames, coordinate_file, name):
+    def _initialize_new_manager(self, mites_detection, frames, coordinate_file, name, settings):
         """Initialize a new MiteManager instance."""
         self.zones = []
         self.name = name
@@ -53,7 +53,7 @@ class MiteManager:
         self.data = pd.DataFrame()
         self.mite_data = pd.DataFrame()
         self.reloaded = False
-        
+        self.settings = settings
 
     def save(self):
         with open(self.save_path, 'wb') as f:
@@ -65,6 +65,9 @@ class MiteManager:
             loaded = pickle.load(f)
             self.__dict__.update(loaded.__dict__)
             self.reloaded = True
+            # Handle legacy saved objects that don't have settings attribute
+            if not hasattr(self, 'settings'):
+                self.settings = None
             self.update_mites(frames)
 
 
