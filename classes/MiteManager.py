@@ -238,7 +238,7 @@ class MiteManager:
             
             for mite in zone.mites:
                 mite.update_status()
-                mite.update_status_severin()
+           
         
                 if save:
                     mite.save_with_ground_truth(ground_truth)
@@ -308,7 +308,7 @@ class MiteManager:
             self.mite_data = self.mite_data.sort_values(by=['mite ID', 'recording'])
 
             #apply streak dead rule
-            self.mite_data = self.post_process_mite_data(self.mite_data, dead_streak, num_recordings, recording_count)
+            # self.mite_data = self.post_process_mite_data(self.mite_data, dead_streak, num_recordings, recording_count)
 
             # Calculate summary statistics by recording and zone_id
 

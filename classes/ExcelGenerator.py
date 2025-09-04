@@ -117,8 +117,9 @@ class ExcelGenerator:
 
                 mite_id = pivot.reset_index().iloc[r_idx-2, 0]  # mite ID from first column
                 recording_num = pivot.reset_index().columns[c_idx-1]  # column = recording number
-                
-                # Get streak start for this mite
+
+
+                """ # Get streak start for this mite
                 streak_start = zone_df.loc[zone_df['mite ID'] == mite_id, 'streak_start'].values
                 streak_start = streak_start[0] if len(streak_start) > 0 else np.nan
 
@@ -132,7 +133,7 @@ class ExcelGenerator:
                     if value == 'alive':
                         cell.fill = self.green_fill
                     elif value == 'dead':
-                        cell.fill = self.red_fill
+                        cell.fill = self.red_fill"""
 
             
         # Add zone plot image

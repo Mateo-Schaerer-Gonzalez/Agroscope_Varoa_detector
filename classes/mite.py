@@ -90,7 +90,7 @@ class Mite:
 
         # update alive status based on variability
         self.alive = self.local_avg_diff > Mite.threshold #above threshold is alive, below is dead
-        self.bbox.color = (0, 255, 0) if self.alive else (0, 0, 255)
+        self.bbox.color = (0,0,255)
        
         return self.alive
     
