@@ -148,7 +148,7 @@ class Settings:
 
 def get_settings(folder_path):
     """Load settings from a text file."""
-    settings_file = os.path.join(folder_path, "settings.txt")
+    settings_file = os.path.join(folder_path, ".settings.txt")
     if not os.path.exists(settings_file):
         raise FileNotFoundError(f"Settings file not found: {settings_file}")
 

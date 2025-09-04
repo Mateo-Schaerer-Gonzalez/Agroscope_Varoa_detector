@@ -293,7 +293,6 @@ class ModernVarroaDetectorApp:
         self.selected_folder = tk.StringVar()
         self.analysis_name = tk.StringVar(value="analysis_1")
         self.plates_per_recording = tk.StringVar(value="1")
-        self.time_between_recordings = tk.StringVar(value="1")
         self.dead_streak = tk.StringVar(value="2")
         self.analysis_running = False
         self.results_path = None
@@ -1131,7 +1130,6 @@ class ModernVarroaDetectorApp:
         configs = [
             ("Analysis Name:", self.analysis_name, "entry"),
             ("sample rows per plate:", self.plates_per_recording, "combo", ["1", "2"]),
-            ("Time Between Recordings (min):", self.time_between_recordings, "entry"),
             ("Dead Streak (frames):", self.dead_streak, "entry")
         ]
         
@@ -1966,16 +1964,6 @@ class ModernVarroaDetectorApp:
             print("ERROR: Please enter an analysis name")
             return False
         
-        # Validate numeric inputs
-        try:
-            time_between = float(self.time_between_recordings.get())
-            if time_between < 0:
-                print("ERROR: Time between recordings cannot be negative")
-                return False
-        except ValueError:
-            print("ERROR: Time between recordings must be a valid number")
-            return False
-        
         # Validate dead streak (must be positive integer)
         try:
             streak_val = int(self.dead_streak.get())
@@ -2031,16 +2019,15 @@ class ModernVarroaDetectorApp:
         num_per_plate = int(self.plates_per_recording.get())
         reanalyze = True  # Always run in reanalysis mode
         num_recordings = 2  # Default value for reanalysis
-        time_between_rec = float(self.time_between_recordings.get())
         dead_streak = int(self.dead_streak.get())
         
         # Store parameters for potential continuation after recording 1
-        self.continue_analysis_params = (folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec)
+        self.continue_analysis_params = (folder_path, name, num_per_plate, reanalyze, num_recordings)
         
         # Start analysis in separate thread
         analysis_thread = threading.Thread(
             target=self.run_analysis,
-            args=(folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec, dead_streak),
+            args=(folder_path, name, num_per_plate, reanalyze, num_recordings, dead_streak),
             daemon=True
         )
         analysis_thread.start()
@@ -2374,7 +2361,7 @@ class ModernVarroaDetectorApp:
         
         # Note: The original analysis thread will now continue with recording 2
     
-    def run_analysis(self, folder_path, name, num_per_plate, reanalyze, num_recordings, time_between_rec, dead_streak):
+    def run_analysis(self, folder_path, name, num_per_plate, reanalyze, num_recordings, dead_streak):
         """Run the analysis in a separate thread"""
         try:
             # Update progress
@@ -2405,7 +2392,6 @@ class ModernVarroaDetectorApp:
                 discobox_run=False,
                 num_recordings=num_recordings,
                 count=2,
-                time_between_rec=time_between_rec,
                 output_folder=self.temp_results_dir,  # Use temp directory
                 pause_callback=self.pause_for_text_verification,
                 dead_streak=dead_streak

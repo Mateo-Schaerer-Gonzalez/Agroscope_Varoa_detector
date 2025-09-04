@@ -34,7 +34,6 @@ class PathHandler:
         self.by_mite_path = os.path.join(self.general_summary_path, 'zones')
         self.excel_by_zones = os.path.join(self.by_mite_path, "mites.xlsx")
         self.excel_by_recording = os.path.join(self.general_summary_path, "recordings_summary.xlsx")
-        self.time_file_path = os.path.join(self.general_summary_path, os.pardir, "time_between_recording.txt")
 
         # Find the settings file in the general summary path
         self.settings_file_path = os.path.join(self.general_summary_path, ".settings.txt")
@@ -46,34 +45,3 @@ class PathHandler:
         """Create necessary directories."""
         os.makedirs(self.output_path, exist_ok=True)
         os.makedirs(self.by_mite_path, exist_ok=True)
-    
-    def get_time_between_recordings(self, time_between_recordings):
-        """Get or set time between recordings."""
-        if time_between_recordings != 1:
-            time_value = time_between_recordings / 60
-            self._write_time_to_file(time_value)
-            return time_value
-        else:
-            return self._read_time_from_file()
-    
-    def _write_time_to_file(self, time_value):
-        """Write time value to file."""
-        try:
-            with open(self.time_file_path, "w") as f:
-                f.write(str(time_value))
-        except Exception as e:
-            print(f"Failed to write time to file: {e}")
-    
-    def _read_time_from_file(self):
-        """Read time value from file."""
-        try:
-            print("Looking for time in:", self.time_file_path)
-            with open(self.time_file_path, 'r') as f:
-                content = f.read().strip()
-                return float(content)
-        except FileNotFoundError:
-            print("Time file not found, setting time to 1 minute")
-            return 1.0
-        except Exception as e:
-            print(f"Error reading time file: {e}")
-            return 1.0

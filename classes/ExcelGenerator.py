@@ -13,14 +13,15 @@ import shutil
 class ExcelGenerator:
     """Handles Excel file generation with data and images."""
     
-    def __init__(self):
+    def __init__(self, settings):
         # Define color fills
         self.green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
         self.red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
         self.dark_red_fill = PatternFill(start_color="9C0006", end_color="9C0006", fill_type="solid")
+        self.settings = settings
     
     def create_recordings_summary(self, summary_df, time_survival_path, excel_path, 
-                                recordings_base_path, settings):
+                                recordings_base_path):
         
         """Create Excel summary with recordings data."""
         # Guard clause
@@ -37,7 +38,7 @@ class ExcelGenerator:
         ws = wb.create_sheet(title="Settings")
         ws.append(["Settings Used"])
 
-        for key, value in settings.settings_data.items():
+        for key, value in self.settings.settings_data.items():
             ws.append([key, value])
         print(f"Settings sheet added to Excel.")
 

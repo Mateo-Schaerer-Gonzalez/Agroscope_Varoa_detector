@@ -18,7 +18,7 @@ class PlotterModular:
     This replaces the monolithic Plotter class with better separation of concerns.
     """
     
-    def __init__(self, stage, output_folder, discobox_run, time_between_recordings=1):
+    def __init__(self, stage, output_folder, discobox_run):
         # Guard clauses
         if not stage:
             raise ValueError("Stage must be provided")
@@ -29,13 +29,11 @@ class PlotterModular:
         
         # Initialize specialized handlers
         self.path_handler = PathHandler(output_folder, discobox_run)
-        self.plot_generator = PlotGenerator(stage.img_size)
-        self.excel_generator = ExcelGenerator()
-        self.pdf_generator = PDFGenerator()
-            
-        # Set time between recordings directly from the provided UI value (in minutes)
-        # Deprecated legacy file fallback: always honor the passed-in value
-        self.time_between_recording = float(time_between_recordings)
+        self.plot_generator = PlotGenerator(stage.img_size, self.stage.settings)
+        self.excel_generator = ExcelGenerator(self.stage.settings)
+        self.pdf_generator = PDFGenerator(self.stage.settings)
+
+    
     
     def save_frame0_detection(self, image, thickness=2):
         """Save the first frame with detection overlays."""
@@ -62,8 +60,7 @@ class PlotterModular:
         
         try:
             fig = self.plot_generator.create_survival_graph(
-                self.stage.data, self.stage.mite_data, recording_number, self.time_between_recording
-            )
+                self.stage.data, self.stage.mite_data, recording_number)
             fig.savefig(self.path_handler.survival_path)
             plt.close(fig)
             print(f"Survival graph saved to: {self.path_handler.survival_path}")
@@ -80,7 +77,7 @@ class PlotterModular:
         
         try:
             fig = self.plot_generator.create_survival_time_graph(
-                self.stage.data, self.time_between_recording
+                self.stage.data
             )
             fig.savefig(self.path_handler.time_survival_path)
             plt.close(fig)
@@ -152,7 +149,7 @@ class PlotterModular:
             
             try:
                 fig = self.plot_generator.create_mite_variability_plot(
-                    zone_df, zone, self.time_between_recording,
+                    zone_df, zone,
                     threshold, y_min, y_max
                 )
                 
@@ -208,9 +205,7 @@ class PlotterModular:
                 self.stage.data,
                 self.path_handler.time_survival_path,
                 self.path_handler.excel_by_recording,
-                recordings_base_path,
-                self.stage.settings
-            )
+                recordings_base_path)
 
         except ValueError as e:
             print(f"Excel generation error: {e}")

@@ -7,9 +7,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 class PDFGenerator:
     """Handles PDF generation from matplotlib figures."""
     
-    def __init__(self):
-        pass
-    
+    def __init__(self, settings):
+        self.settings = settings
+
     def create_recording_pdf(self, figures, output_path):
         """Create a PDF with multiple figures."""
         # Guard clause

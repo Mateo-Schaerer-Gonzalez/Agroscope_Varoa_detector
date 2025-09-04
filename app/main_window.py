@@ -378,8 +378,7 @@ Developed by Agroscope for automated Varroa mite detection and analysis."""
                 reanalyze=reanalyze,
                 discobox_run=False,
                 num_recordings=2,
-                count=2,
-                time_between_rec=1
+                count=2
             )
             
             progress_window.update_status("Generating reports...", 0.9, "Creating visualizations...")

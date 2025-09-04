@@ -12,10 +12,11 @@ from classes.mite import Mite
 class PlotGenerator:
     """Handles the generation of various plot types."""
     
-    def __init__(self, img_size=(15, 10)):
+    def __init__(self, img_size, settings):
         self.img_size = img_size
+        self.settings = settings
 
-    def create_survival_graph(self, summary_data, mite_data, recording_number, time_between_recording):
+    def create_survival_graph(self, summary_data, mite_data, recording_number):
         """Create survival graph for a specific recording."""
         # Guard clauses
         if summary_data.empty or mite_data.empty:
@@ -28,6 +29,9 @@ class PlotGenerator:
         if summary_data.empty or mite_data.empty:
             raise ValueError(f"No data found for recording {recording_number}")
         
+
+        time_between_recording = self.settings.recording_timeout  
+
         # Create a figure with 2 subplots side by side
         fig, axes = plt.subplots(1, 2, figsize=(12, 6))
         
@@ -50,12 +54,14 @@ class PlotGenerator:
         
         plt.tight_layout()
         return fig
-    
-    def create_survival_time_graph(self, df, time_between_recording):
+
+    def create_survival_time_graph(self, df):
         """Create survival over time graph."""
         if df.empty:
             raise ValueError("No data available for time series plotting")
-        
+
+        time_between_recording = self.settings.recording_timeout
+
         plt.figure(figsize=(10, 6))
         
         for zone in df['zone ID'].unique():
@@ -92,12 +98,12 @@ class PlotGenerator:
         plt.legend()
         plt.savefig(save_path)
         plt.close()
-    
-    def create_mite_variability_plot(self, zone_df, zone, time_between_recording, 
-                                   threshold, y_min, y_max):
+
+    def create_mite_variability_plot(self, zone_df, zone, threshold, y_min, y_max):
         """Create variability plot for mites in a specific zone."""
         mites = zone_df['mite ID'].unique()
         num_mites = len(mites)
+        time_between_recording = self.settings.recording_timeout
         
         if num_mites == 0:
             return None
