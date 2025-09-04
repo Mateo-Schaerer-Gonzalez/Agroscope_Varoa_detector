@@ -110,7 +110,7 @@ class ExcelGenerator:
         # Write headers and data with conditional formatting
         for r_idx, row in enumerate(dataframe_to_rows(pivot.reset_index(), index=False, header=True), 1):
             for c_idx, value in enumerate(row, 1):
-                cell = ws.cell(row=r_idx, column=c_idx, value=f"{value*self.settings.recording_timeout} min" if c_idx == 1 else value)
+                cell = ws.cell(row=r_idx, column=c_idx, value=f"{value*self.settings.recording_timeout} min" if (r_idx == 1 and c_idx > 1) else value)
                 
                 if r_idx == 1 or c_idx == 1:
                     continue  # skip header cells
