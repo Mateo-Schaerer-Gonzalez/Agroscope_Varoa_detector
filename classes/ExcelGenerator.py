@@ -110,13 +110,15 @@ class ExcelGenerator:
         # Write headers and data with conditional formatting
         for r_idx, row in enumerate(dataframe_to_rows(pivot.reset_index(), index=False, header=True), 1):
             for c_idx, value in enumerate(row, 1):
-                cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                cell = ws.cell(row=r_idx, column=c_idx, value=f"{value*self.settings.recording_timeout} min" if c_idx == 1 else value)
                 
                 if r_idx == 1 or c_idx == 1:
                     continue  # skip header cells
 
                 mite_id = pivot.reset_index().iloc[r_idx-2, 0]  # mite ID from first column
                 recording_num = pivot.reset_index().columns[c_idx-1]  # column = recording number
+
+
 
 
                 """ # Get streak start for this mite
