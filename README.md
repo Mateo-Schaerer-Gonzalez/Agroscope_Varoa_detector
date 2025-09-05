@@ -1,148 +1,96 @@
-# Agroscope Varroa Detector
+# Varroa Detector 🐝  
+AI-powered analysis of Discobox data using advanced YOLO-based detection.  
 
-This repository provides a complete pipeline for Varroa mite detection and live/dead classification, designed to support automated monitoring of honeybee colonies with a modern graphical user interface.
+This tool automates the detection and classification of **Varroa destructor mites** from Discobox recordings. It identifies mites, processes experimental annotations, and provides detailed survival analyses.  
 
-## Detection Model Used
+---
 
-Detection Model:
-Mite detection is performed using the model introduced in:
-"An AI-Based Open-Source Software for Varroa Mite Fall Analysis in Honeybee Colonies"
-Giovanni Formato et al., 2023
-https://www.mdpi.com/2077-0472/15/9/969#:~:text=This%20study%20was%20designed%20to%20develop%20and%20test,images%20of%20sticky%20boards%20collected%20in%20honeybee%20colonies.
+## 🚀 Features  
+- Automated detection of **Varroa mites** using a fine-tuned YOLO model.  
+- Classification of mites as **alive or dead** based on pixel-difference motion tracking.  
+- Easy-to-use GUI for dataset upload, configuration, and verification.  
+- Exportable results in structured **Excel files** and images for further analysis.  
+- Built-in visualization of survival rates, mite movements, and detection performance.  
 
-## Installation and Usage
+---
 
-### Prerequisites
-- Python 3.8 or higher
-- Windows/macOS/Linux
+## ⚙️ Installation  
 
-### Installation
+### Prerequisites  
+- [Miniforge](https://conda-forge.org/miniforge/)  
+- [Git](https://git-scm.com/downloads)  
 
+### Steps  
 ```bash
+# 1. Clone the repository
 git clone https://github.com/Mateo-Schaerer-Gonzalez/Agroscope_Varoa_detector.git
+
+# 2. Navigate into the project directory
 cd Agroscope_Varoa_detector
-pip install -r requirements.txt
+
+# 3. Run the installation script (Windows)
+install.cmd
 ```
+---
 
-### Running the Application
+## ▶️ Usage  
 
-#### Option 1: GUI Application (Recommended)
-For a user-friendly graphical interface:
+1. **Prepare your recording data**  
+   - Use a fine black pen for labeling zones.  
+   - Recommended recording parameters:  
+     ```
+     vent time = 20
+     led1 time = 20
+     led2 time = 20
+     frame count = 30
+     fps = 30
+     vent = 255
+     led1 = 255
+     led2 = 255
+     ```  
+   - Each zone = 1–2 lines of handwriting (system will auto-assign zones).  
+   - If using dead controls, freeze mites ≥2h before recording.  
 
-**Windows:**
-```bash
-start_app.bat
-```
+2. **Launch the software**  
+   - Double-click the desktop icon.  
+   - Upload Discobox recording data (full folder of `.bmp` images).  
 
-**macOS/Linux:**
-```bash
-python run_app.py
-```
+3. **Configure analysis**  
+   - Enter analysis name.  
+   - Set number of samples per plate.  
+   - Define **dead streak** (consecutive frames required to classify mite as dead).  
 
-#### Option 2: Command Line Interface
-For direct script execution:
-```bash
-python main.py
-```
+4. **Verify and edit labels**  
+   - Hover/click zones to check and correct text labels.  
+   - Group zones by giving them the same name.  
 
-## Features
+5. **Run the analysis & export results**  
+   - Download results as a `.zip` containing:  
+     - `recording_summary.xlsx` – overview of survival data.  
+     - `mites.xlsx` – detailed per-zone detection results.  
+     - Images (`.png`) of survival curves, movement plots, and mite cutouts.  
 
-### Modern GUI Application
-- **Intuitive Interface**: Modern dark theme with customizable options
-- **Drag & Drop**: Easy folder selection for image processing
-- **Progress Tracking**: Real-time progress updates during analysis
-- **Results Download**: One-click access to analysis results
-- **Error Handling**: Clear error messages and validation
+---
 
-### Analysis Capabilities
-- Automated Varroa mite detection using YOLOv11
-- Live/dead classification
-- Survival time analysis
-- Excel and PDF report generation
-- Visualization of detection results
-- Support for reanalysis of existing data
+## 📊 Results & Metrics  
 
-### Supported Input Formats
-- JPG/JPEG
-- PNG
-- BMP
-- TIFF/TIF
+- **Survival curves** across recordings and zones.  
+- **Mite movement plots** (pixel-difference analysis).  
+- **Detection model** performance (precision, recall, mAP).  
+- Accuracy of alive/dead classification:  
+  - Max Difference: **88.5%** (FPR 4%, FNR 19.5%)  
+  - Local Difference: **87.8%** (FPR 4%, FNR 21.0%)  
 
-## How to Use the GUI
+---
 
-1. **Select Folder**: Click "Browse" to select a folder containing your microscopy images
-2. **Analysis Name**: Enter a descriptive name for your analysis session
-3. **Configure Options**:
-   - Choose number of mites per plate (1 or 2)
-   - Optionally enable reanalysis mode
-4. **Start Analysis**: Click "Start Analysis" to begin processing
-5. **Monitor Progress**: Watch the progress bar and status updates
-6. **Download Results**: Once complete, click "Download Results" to access output files
+## 🔬 Model Training  
+- Based on **Yániz et al. (2025)** open-source YOLO model.  
+- Fine-tuned on **512 Discobox images** (80/20 train/val split).  
+- Trained for **70 epochs**, freezing top 100 layers.  
+- No signs of overfitting; strong recall and mAP@50.  
 
-## Output Files
+---
 
-The application generates comprehensive results including:
-- Detection visualization images
-- Survival time graphs and statistics
-- Excel spreadsheets with detailed mite data
-- PDF reports with summary information
-- Raw data files for further analysis
-
-## Project Structure
-
-```
-├── app/                    # GUI application files
-│   ├── main_window.py     # Main application window
-│   ├── launch.py          # Application launcher
-│   └── icons/             # Application icons
-├── classes/               # Core detection and analysis classes
-├── utils/                 # Utility functions and tools
-├── Datasets/              # Sample datasets for testing
-├── outputs/               # Analysis results and reports
-├── run_app.py             # Simple application launcher
-├── start_app.bat          # Windows batch launcher
-└── requirements.txt       # Python dependencies
-```
-
-## Development
-
-For developers wanting to extend or modify the application:
-
-### Core Components
-- `classes/detector.py`: Main detection engine using YOLOv11
-- `classes/MiteManager.py`: Mite tracking and status management
-- `classes/PlotterModular.py`: Visualization and report generation
-- `app/main_window.py`: GUI implementation using CustomTkinter
-
-### Adding New Features
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Test thoroughly with sample data
-5. Submit a pull request
-
-## Troubleshooting
-
-### Common Issues
-- **Import errors**: Ensure all dependencies are installed via `pip install -r requirements.txt`
-- **Model loading errors**: Verify that `yolo11n.pt` is present in the project directory
-- **Permission errors**: Run with appropriate permissions, especially on Windows
-- **Memory issues**: For large image sets, consider processing smaller batches
-
-### Getting Help
-- Check the built-in help by clicking "ℹ How to use" in the application
-- Review error messages in the status bar
-- Consult the console output for detailed debugging information
-
-## Citation
-
-If you use this software in your research, please cite:
-"An AI-Based Open-Source Software for Varroa Mite Fall Analysis in Honeybee Colonies"
-Giovanni Formato et al., 2023
-
-## License
-
-This project is open source and available under the MIT License.
-
-
-
+## 📖 References  
+- Ultralytics (2023). *Performance Metrics Deep Dive*. [Docs](https://docs.ultralytics.com/de/guides/yolo-performance-metrics/)  
+- Yániz, Jesús et al. (2025). *An AI-Based Open-Source Software for Varroa Mite Fall Analysis in Honeybee Colonies*. **Agriculture**
