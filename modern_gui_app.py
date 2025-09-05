@@ -1105,7 +1105,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="🍯 Analysis Configuration",
+            text="Analysis Configuration",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
@@ -1893,7 +1893,7 @@ class ModernVarroaDetectorApp:
         
         title_label = tk.Label(
             header_frame,
-            text="🍯 Results & Download",
+            text="Results & Download",
             font=self.fonts['heading'],
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary']
